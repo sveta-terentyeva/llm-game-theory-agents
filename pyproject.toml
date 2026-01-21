@@ -1,0 +1,13 @@
+[project]
+name = "llm-game-theory-agents"
+version = "0.1.0"
+description = "LLM agents in classical game-theoretic simulations (2-player), with and without workflow."
+requires-python = ">=3.10"
+dependencies = [
+  "pydantic>=2.0",
+  "python-dotenv>=1.0",
+  "pandas>=2.0",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
