@@ -14,6 +14,8 @@ class Agent(Protocol):
     name: str
     def act(self, game: Game, messages: list[ChatMessage]) -> str: ...
 
+    def send_message(self, game: Game, messages: list[ChatMessage]) -> str: ...
+
 
 def run_episode(
     *,
@@ -41,6 +43,22 @@ def run_episode(
         ],
         started_at_utc=utc_now_iso(),
     )
+
+    used_rounds = 0
+    for t in range(max_comm_rounds):
+        msg_a = agent_a.send_message(game, rec.messages)
+        rec.messages.append(
+            ChatMessage(role="agent_a", content=msg_a)
+        )
+
+        msg_b = agent_b.send_message(game, rec.messages)
+        rec.messages.append(
+            ChatMessage(role="agent_b", content=msg_b)
+        )
+
+        used_rounds += 1
+
+    rec.used_comm_rounds = used_rounds
 
     allowed = set(game.actions())
 

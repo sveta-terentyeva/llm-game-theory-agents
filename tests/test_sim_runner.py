@@ -4,6 +4,8 @@ from llmgt.games import PrisonersDilemma
 from llmgt.agents.simple import FixedActionAgent
 from llmgt.logging.jsonl_logger import JsonlLogger
 from llmgt.sim.runner import run_episode, run_experiment, summarize_theory_hits
+from llmgt.agents import FixedActionAgent, EchoAgent
+
 
 
 def test_episode_record_fills_fields():
@@ -50,3 +52,28 @@ def test_experiment_logging_and_theory(tmp_path: Path):
     # для PD: (D,D) має бути Nash
     assert stats["nash_rate"] == 1.0
     assert stats["agreement_rate"] == 1.0
+
+
+def test_episode_with_communication_rounds():
+    g = PrisonersDilemma()
+
+    a = EchoAgent(name="echo_A", action="C")
+    b = EchoAgent(name="echo_B", action="D")
+
+    rec = run_episode(
+        episode_id="comm-1",
+        game=g,
+        agent_a=a,
+        agent_b=b,
+        max_comm_rounds=2,
+    )
+
+    # 2 rounds -> 4 messages (A,B,A,B) + system + actions
+    comm_msgs = [
+        m for m in rec.messages
+        if m.role in ("agent_a", "agent_b")
+        and not m.content.startswith("ACTION")
+    ]
+
+    assert rec.used_comm_rounds == 2
+    assert len(comm_msgs) == 4
