@@ -9,6 +9,9 @@ from llmgt.logging.jsonl_logger import JsonlLogger
 from collections import Counter
 from llmgt.logging.records import EpisodeRecord, ExperimentSummary
 
+from llmgt.sim.agreement import agreement_hit
+
+
 
 class Agent(Protocol):
     name: str
@@ -82,7 +85,12 @@ def run_episode(
     rec.nash_hit = (a, b) in game.nash_equilibria()
     rec.pareto_hit = (a, b) in game.pareto_optima()
 
-    rec.agreement_hit = (a == b)
+    rec.agreement_hit = agreement_hit(
+        game=game,
+        messages=rec.messages,
+        final_action_a=a,
+        final_action_b=b,
+    )
     rec.finished_at_utc = utc_now_iso()
 
     if logger is not None:

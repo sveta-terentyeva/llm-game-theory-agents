@@ -1,10 +1,10 @@
 from pathlib import Path
 
 from llmgt.games import PrisonersDilemma
-from llmgt.agents.simple import FixedActionAgent
+from llmgt.agents import FixedActionAgent, EchoAgent
 from llmgt.logging.jsonl_logger import JsonlLogger
 from llmgt.sim.runner import run_episode, run_experiment, summarize_theory_hits
-from llmgt.agents import FixedActionAgent, EchoAgent
+
 
 
 
@@ -32,6 +32,7 @@ def test_episode_record_fills_fields():
     assert (rec.payoff_a, rec.payoff_b) == (0.0, 5.0)
 
     assert rec.finished_at_utc is not None
+    assert rec.agreement_hit is False
     assert len(rec.messages) >= 3  # system + 2 actions
 
 

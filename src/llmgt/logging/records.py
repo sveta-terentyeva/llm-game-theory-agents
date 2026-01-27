@@ -36,6 +36,7 @@ class EpisodeRecord(BaseModel):
     nash_hit: Optional[bool] = None
     pareto_hit: Optional[bool] = None
     agreement_hit: Optional[bool] = None
+    rounds_to_agreement: Optional[int] = None
 
     extra: dict[str, Any] = Field(default_factory=dict)
 
