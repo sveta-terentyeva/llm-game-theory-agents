@@ -10,6 +10,8 @@ from collections import Counter
 from llmgt.logging.records import EpisodeRecord, ExperimentSummary
 
 from llmgt.sim.agreement import agreement_hit
+from llmgt.sim.rounds import compute_rounds_to_agreement
+
 
 
 
@@ -90,6 +92,13 @@ def run_episode(
         messages=rec.messages,
         final_action_a=a,
         final_action_b=b,
+    )
+    rec.rounds_to_agreement = compute_rounds_to_agreement(
+        game=game,
+        messages=rec.messages,
+        final_action_a=a,
+        final_action_b=b,
+        max_comm_rounds=max_comm_rounds,
     )
     rec.finished_at_utc = utc_now_iso()
 
