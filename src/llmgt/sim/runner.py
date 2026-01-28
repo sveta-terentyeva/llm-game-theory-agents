@@ -50,16 +50,16 @@ def run_episode(
     )
 
     used_rounds = 0
+
     for t in range(max_comm_rounds):
+        if not hasattr(agent_a, "send_message") or not hasattr(agent_b, "send_message"):
+            break
+
         msg_a = agent_a.send_message(game, rec.messages)
-        rec.messages.append(
-            ChatMessage(role="agent_a", content=msg_a)
-        )
+        rec.messages.append(ChatMessage(role="agent_a", content=msg_a))
 
         msg_b = agent_b.send_message(game, rec.messages)
-        rec.messages.append(
-            ChatMessage(role="agent_b", content=msg_b)
-        )
+        rec.messages.append(ChatMessage(role="agent_b", content=msg_b))
 
         used_rounds += 1
 
