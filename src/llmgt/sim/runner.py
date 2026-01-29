@@ -13,8 +13,6 @@ from llmgt.sim.agreement import agreement_hit
 from llmgt.sim.rounds import compute_rounds_to_agreement
 
 
-
-
 class Agent(Protocol):
     name: str
     def act(self, game: Game, messages: list[ChatMessage]) -> str: ...

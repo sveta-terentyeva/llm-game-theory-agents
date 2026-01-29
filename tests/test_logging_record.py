@@ -1,6 +1,5 @@
 from llmgt.logging import EpisodeRecord, ChatMessage
 
-
 def test_episode_record_serializes():
     rec = EpisodeRecord(
         episode_id="ep_test",
