@@ -9,6 +9,12 @@ class Game(ABC):
     def actions(self) -> tuple[str, ...]:
         raise NotImplementedError
 
+    def actions_a(self) -> tuple[str, ...]:
+        return self.actions()
+
+    def actions_b(self) -> tuple[str, ...]:
+        return self.actions()
+
     @abstractmethod
     def payoff(self, action_a: str, action_b: str) -> tuple[float, float]:
         raise NotImplementedError

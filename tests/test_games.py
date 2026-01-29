@@ -25,3 +25,9 @@ def test_ultimatum_game():
     assert ("F", "A") in g.pareto_optima()
 
 
+def test_ultimatum_action_spaces_are_role_specific():
+    g = UltimatumGame()
+    assert set(g.actions_a()) == {"L", "F"}
+    assert set(g.actions_b()) == {"A", "R"}
+
+
