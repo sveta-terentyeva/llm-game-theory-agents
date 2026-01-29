@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Any, Literal, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 
 
 def utc_now_iso() -> str:
@@ -17,6 +17,8 @@ class ChatMessage(BaseModel):
 
 
 class EpisodeRecord(BaseModel):
+    model_config = ConfigDict(protected_namespaces=())
+
     episode_id: str
     game: str
     mode: Literal["no_workflow", "workflow"]
@@ -47,6 +49,8 @@ class EpisodeRecord(BaseModel):
 
 
 class ExperimentSummary(BaseModel):
+    model_config = ConfigDict(protected_namespaces=())
+
     game: str
     mode: Literal["no_workflow", "workflow"]
     n_episodes: int
@@ -70,5 +74,3 @@ class ExperimentSummary(BaseModel):
 
     conclusion: str
     generated_at_utc: str = Field(default_factory=utc_now_iso)
-
-
