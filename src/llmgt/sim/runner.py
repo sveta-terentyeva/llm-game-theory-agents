@@ -2,15 +2,16 @@ from __future__ import annotations
 
 from typing import Protocol, Any, Optional, Iterable
 
-from llmgt.games.base import Game
-from llmgt.logging.records import EpisodeRecord, ChatMessage, utc_now_iso
-from llmgt.logging.jsonl_logger import JsonlLogger
-
 from collections import Counter
-from llmgt.logging.records import EpisodeRecord, ExperimentSummary
+
+from llmgt.games.base import Game
+from llmgt.logging.records import EpisodeRecord, ExperimentSummary, ChatMessage, utc_now_iso
+from llmgt.logging.jsonl_logger import JsonlLogger
 
 from llmgt.sim.agreement import agreement_hit
 from llmgt.sim.rounds import compute_rounds_to_agreement
+
+
 
 
 class Agent(Protocol):
@@ -63,16 +64,21 @@ def run_episode(
 
     rec.used_comm_rounds = used_rounds
 
-    allowed = set(game.actions())
+    allowed_a = set(game.actions_a())
+    allowed_b = set(game.actions_b())
 
     a = agent_a.act(game, rec.messages)
-    if a not in allowed:
-        raise ValueError(f"agent_a returned invalid action {a!r}. Allowed: {sorted(allowed)}")
+    if a not in allowed_a:
+        raise ValueError(
+            f"agent_a returned invalid action {a!r}. Allowed: {sorted(allowed_a)}"
+        )
     rec.messages.append(ChatMessage(role="agent_a", content=f"ACTION: {a}"))
 
     b = agent_b.act(game, rec.messages)
-    if b not in allowed:
-        raise ValueError(f"agent_b returned invalid action {b!r}. Allowed: {sorted(allowed)}")
+    if b not in allowed_b:
+        raise ValueError(
+            f"agent_b returned invalid action {b!r}. Allowed: {sorted(allowed_b)}"
+        )
     rec.messages.append(ChatMessage(role="agent_b", content=f"ACTION: {b}"))
 
     rec.action_a = a
