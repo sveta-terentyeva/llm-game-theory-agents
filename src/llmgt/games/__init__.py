@@ -5,4 +5,10 @@ from .battle_of_sexes import BattleOfSexes
 from .ultimatum import UltimatumGame
 
 
-__all__ = ["Game", "PrisonersDilemma"]
+__all__ = [
+    "Game",
+    "PrisonersDilemma",
+    "StagHunt",
+    "BattleOfSexes",
+    "UltimatumGame",
+]
