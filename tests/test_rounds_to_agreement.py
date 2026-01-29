@@ -3,16 +3,17 @@ from llmgt.logging.records import ChatMessage
 from llmgt.sim.rounds import compute_rounds_to_agreement
 
 
-def test_rounds_to_agreement_explicit_round_1():
+def test_rounds_to_agreement_workflow_accept_round_1():
     g = PrisonersDilemma()
 
     messages = [
-        ChatMessage(role="agent_a", content="Let's do (C,C)"),
-        ChatMessage(role="agent_b", content="Agreed"),
+        ChatMessage(role="agent_a", content="PROPOSE: (C,C)"),
+        ChatMessage(role="agent_b", content="ACCEPT: (C,C)"),
     ]
 
     r = compute_rounds_to_agreement(
         game=g,
+        mode="workflow",
         messages=messages,
         final_action_a="C",
         final_action_b="C",
@@ -22,30 +23,32 @@ def test_rounds_to_agreement_explicit_round_1():
     assert r == 1
 
 
-def test_rounds_to_agreement_never():
+def test_rounds_to_agreement_workflow_never():
     g = PrisonersDilemma()
 
     messages = [
-        ChatMessage(role="agent_a", content="I will defect"),
-        ChatMessage(role="agent_b", content="I will cooperate"),
+        ChatMessage(role="agent_a", content="PROPOSE: (C,C)"),
+        ChatMessage(role="agent_b", content="No"),
     ]
 
     r = compute_rounds_to_agreement(
         game=g,
+        mode="workflow",
         messages=messages,
         final_action_a="C",
-        final_action_b="D",
+        final_action_b="C",
         max_comm_rounds=2,
     )
 
     assert r is None
 
 
-def test_rounds_to_agreement_nash_without_chat():
+def test_rounds_to_agreement_nash_without_chat_no_workflow():
     g = PrisonersDilemma()
 
     r = compute_rounds_to_agreement(
         game=g,
+        mode="no_workflow",
         messages=[],
         final_action_a="D",
         final_action_b="D",

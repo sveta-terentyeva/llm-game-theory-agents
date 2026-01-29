@@ -9,18 +9,12 @@ from llmgt.sim.agreement import agreement_hit
 def compute_rounds_to_agreement(
     *,
     game: Game,
+    mode: str,
     messages: List[ChatMessage],
     final_action_a: str,
     final_action_b: str,
     max_comm_rounds: int,
 ) -> Optional[int]:
-    """
-    Returns the minimal round index (1-based) after which agreement
-    is already determined and consistent with final actions.
-
-    If agreement is never reached, returns None.
-    """
-
     non_system = [m for m in messages if m.role != "system"]
 
     for r in range(1, max_comm_rounds + 1):
@@ -28,6 +22,7 @@ def compute_rounds_to_agreement(
 
         if agreement_hit(
             game=game,
+            mode=mode,
             messages=upto,
             final_action_a=final_action_a,
             final_action_b=final_action_b,
@@ -35,3 +30,4 @@ def compute_rounds_to_agreement(
             return r
 
     return None
+

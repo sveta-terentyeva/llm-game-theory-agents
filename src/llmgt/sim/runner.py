@@ -93,17 +93,21 @@ def run_episode(
 
     rec.agreement_hit = agreement_hit(
         game=game,
+        mode=mode,
         messages=rec.messages,
         final_action_a=a,
         final_action_b=b,
     )
+
     rec.rounds_to_agreement = compute_rounds_to_agreement(
         game=game,
+        mode=mode,
         messages=rec.messages,
         final_action_a=a,
         final_action_b=b,
         max_comm_rounds=max_comm_rounds,
     )
+
     rec.finished_at_utc = utc_now_iso()
 
     if logger is not None:
