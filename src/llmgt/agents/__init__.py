@@ -1,5 +1,6 @@
 from .simple import FixedActionAgent, EchoAgent
 from .workflow import WorkflowProposerAgent, WorkflowResponderAgent, StochasticWorkflowResponderAgent
+from .llm import LLMAgent
 
 __all__ = [
     "FixedActionAgent",
@@ -7,5 +8,6 @@ __all__ = [
     "WorkflowProposerAgent",
     "WorkflowResponderAgent",
     "StochasticWorkflowResponderAgent",
+    "LLMAgent",
 ]
 
