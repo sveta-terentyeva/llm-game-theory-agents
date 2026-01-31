@@ -16,8 +16,8 @@ def main() -> None:
     client_a = HeuristicLLMClient()
     client_b = HeuristicLLMClient()
 
-    agent_a = LLMAgent(name="llm_A", client=client_a)
-    agent_b = LLMAgent(name="llm_B", client=client_b)
+    agent_a = LLMAgent(name="llm_A", client=client_a, role="agent_a")
+    agent_b = LLMAgent(name="llm_B", client=client_b, role="agent_b")
 
     out_dir = Path("data/runs")
     logger = JsonlLogger(out_dir=out_dir, filename="pd_llm_workflow.jsonl")

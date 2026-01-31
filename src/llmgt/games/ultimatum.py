@@ -42,6 +42,13 @@ class UltimatumGame(Game):
         """Responder actions."""
         return (self.A, self.R)
 
+    def actions_for(self, role: str) -> tuple[str, ...]:
+        if role == "agent_a":
+            return self.actions_a()
+        if role == "agent_b":
+            return self.actions_b()
+        return self.actions()
+
     def payoff(self, a: str, b: str) -> tuple[float, float]:
         if a == self.L and b == self.A:
             return (3.0, 1.0)

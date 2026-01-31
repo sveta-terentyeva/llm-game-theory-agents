@@ -1,24 +1,33 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Optional
+from typing import Optional, Literal
+import re
 
 from llmgt.games.base import Game
 from llmgt.logging.records import ChatMessage
 from llmgt.llm.client import LLMClient, LLMMessage
 
 
+_PAIR_RE = re.compile(r"\(([A-Za-z]+)\s*,\s*([A-Za-z]+)\)")
+_ACCEPT_RE = re.compile(r"\bACCEPT\b\s*:\s*" + _PAIR_RE.pattern)
+
+
 def _format_history(messages: list[ChatMessage], limit: int = 12) -> str:
     tail = messages[-limit:] if len(messages) > limit else messages
-    lines: list[str] = []
-    for m in tail:
-        lines.append(f"{m.role}: {m.content}")
-    return "\n".join(lines)
+    return "\n".join(f"{m.role}: {m.content}" for m in tail)
+
+
+def _extract_accepted_pair(messages: list[ChatMessage]) -> Optional[tuple[str, str]]:
+    for m in messages:
+        mm = _ACCEPT_RE.search(m.content)
+        if mm:
+            return (mm.group(1), mm.group(2))
+    return None
 
 
 def _parse_action(text: str, allowed: tuple[str, ...]) -> Optional[str]:
     t = text.strip()
-
     candidates = [t]
 
     if "\n" in t:
@@ -46,9 +55,8 @@ def _parse_action(text: str, allowed: tuple[str, ...]) -> Optional[str]:
 class LLMAgent:
     name: str
     client: LLMClient
+    role: Literal["agent_a", "agent_b"]
     temperature: float = 0.7
-
-    role_label: str = "A"
 
     def send_message(self, game: Game, messages: list[ChatMessage]) -> str:
         allowed = game.actions()
@@ -56,12 +64,15 @@ class LLMAgent:
             "You are a game-theory agent negotiating with another agent.\n"
             f"Game: {game.name}\n"
             f"Valid actions: {list(allowed)}\n"
-            "Goal: propose a mutually beneficial plan.\n"
-            "If you propose an agreement, use format: (X,Y) where X is your action and Y is the other agent's action.\n"
+            "Goal: propose or accept a plan.\n"
+            "When proposing, use: PROPOSE: (X,Y)\n"
+            "When accepting, use: ACCEPT: (X,Y)\n"
+            "Here X is agent_a's final action and Y is agent_b's final action.\n"
         )
         user = (
             f"Conversation so far:\n{_format_history(messages)}\n\n"
-            "Send ONE short negotiation message. If proposing a plan, include exactly one pair like (C,C)."
+            "Send ONE short message. If you accept a plan, output exactly: ACCEPT: (X,Y). "
+            "If you propose, output exactly: PROPOSE: (X,Y)."
         )
 
         reply = self.client.complete(
@@ -71,7 +82,15 @@ class LLMAgent:
         return reply.strip() or "OK"
 
     def act(self, game: Game, messages: list[ChatMessage]) -> str:
-        allowed = game.actions()
+        allowed = game.actions_for(self.role)
+
+        accepted = _extract_accepted_pair(messages)
+        if accepted is not None:
+            x, y = accepted
+            chosen = x if self.role == "agent_a" else y
+            if chosen in allowed:
+                return chosen
+
         system = (
             "You are a game-theory agent. Choose a final action.\n"
             f"Game: {game.name}\n"

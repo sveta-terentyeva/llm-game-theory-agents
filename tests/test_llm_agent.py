@@ -10,7 +10,7 @@ def test_llm_agent_act_parses_action_token():
         "Let's do (C,C).",
         "D",
     ])
-    agent = LLMAgent(name="dummy-llm", client=client)
+    agent = LLMAgent(name="dummy-llm", client=client, role="agent_a")
 
     msg = agent.send_message(g, [])
     assert "C" in msg
@@ -23,7 +23,7 @@ def test_llm_agent_act_fallback_on_bad_output():
     g = PrisonersDilemma()
 
     client = ScriptedLLMClient(outputs=["nonsense output that has no valid token"])
-    agent = LLMAgent(name="dummy-llm", client=client)
+    agent = LLMAgent(name="dummy-llm", client=client, role="agent_a")
 
     action = agent.act(g, [])
     assert action in g.actions()
