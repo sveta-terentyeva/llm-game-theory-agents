@@ -2,12 +2,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Optional
+import random
 
 from llmgt.games.base import Game
 from llmgt.logging.records import ChatMessage
-from llmgt.sim.workflow import extract_last_proposal, extract_accepted_pair
-
-import random
+from llmgt.sim.workflow import extract_last_proposal, extract_last_counter, extract_accepted_pair
 
 
 @dataclass
@@ -16,17 +15,21 @@ class WorkflowProposerAgent:
     propose_pair: tuple[str, str]  # (action_a, action_b)
 
     def send_message(self, game: Game, messages: list[ChatMessage]) -> str:
-        # If already accepted, confirm briefly (optional)
         accepted = extract_accepted_pair(messages)
         if accepted is not None:
-            return f"CONFIRM: {accepted}"
+            return "OK"
+
+        counter = extract_last_counter(messages)
+        if counter is not None:
+            return f"PROPOSE: ({counter[0]},{counter[1]})"
+
         a, b = self.propose_pair
         return f"PROPOSE: ({a},{b})"
 
     def act(self, game: Game, messages: list[ChatMessage]) -> str:
         accepted = extract_accepted_pair(messages)
         if accepted is not None:
-            return accepted[0]  # agent_a part
+            return accepted[0]
         return self.propose_pair[0]
 
 
@@ -34,22 +37,35 @@ class WorkflowProposerAgent:
 class WorkflowResponderAgent:
     name: str
     fallback_action: str
+    preferred_pair: Optional[tuple[str, str]] = None
+    min_payoff: Optional[float] = None
 
     def send_message(self, game: Game, messages: list[ChatMessage]) -> str:
         accepted = extract_accepted_pair(messages)
         if accepted is not None:
-            return f"CONFIRM: {accepted}"
+            return "OK"
 
         last = extract_last_proposal(messages)
         if last is None:
             return "WAIT"
+
         a, b = last
+
+        # If min_payoff is set, reject low-payoff proposals by countering
+        if self.min_payoff is not None:
+            _, payoff_b = game.payoff(a, b)
+            if float(payoff_b) < float(self.min_payoff):
+                if self.preferred_pair is not None:
+                    pa, pb = self.preferred_pair
+                    return f"COUNTER: ({pa},{pb})"
+                return "REJECT"
+
         return f"ACCEPT: ({a},{b})"
 
     def act(self, game: Game, messages: list[ChatMessage]) -> str:
         accepted = extract_accepted_pair(messages)
         if accepted is not None:
-            return accepted[1]  # agent_b part
+            return accepted[1]
         return self.fallback_action
 
 
@@ -72,15 +88,13 @@ class StochasticWorkflowResponderAgent:
     def send_message(self, game: Game, messages: list[ChatMessage]) -> str:
         accepted = extract_accepted_pair(messages)
         if accepted is not None:
-            return f"CONFIRM: {accepted}"
+            return "OK"
 
         last = extract_last_proposal(messages)
         if last is None:
             return "WAIT"
 
         non_system = [m for m in messages if m.role != "system"]
-        # Each round adds 2 messages (A then B). B's message happens after A's message in the same round.
-        # When B is about to speak, round index is (len(non_system)//2)+1
         r = (len(non_system) // 2) + 1
 
         p = min(1.0, self.base_p + (r - 1) * self.step_p)

@@ -95,7 +95,9 @@ def write_csv(rows: list[dict], path: Path) -> None:
 
     path.parent.mkdir(parents=True, exist_ok=True)
 
+    fieldnames = list(rows[0].keys())
+
     with path.open("w", newline="", encoding="utf-8") as f:
-        writer = csv.DictWriter(f, fieldnames=rows[0].keys())
+        writer = csv.DictWriter(f, fieldnames=fieldnames)
         writer.writeheader()
         writer.writerows(rows)

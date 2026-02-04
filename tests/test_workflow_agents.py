@@ -22,3 +22,32 @@ def test_workflow_agents_can_reach_accept():
     assert rec.action_b == g.C
     assert rec.agreement_hit is True
     assert rec.rounds_to_agreement == 1
+
+
+from llmgt.games import BattleOfSexes
+
+def test_counter_proposal_can_resolve_conflict():
+    g = BattleOfSexes()
+
+    # Proposer wants (O,O)
+    a = WorkflowProposerAgent(name="A", propose_pair=(g.O, g.O))
+
+    # Responder prefers (F,F) and will counter if payoff too low
+    b = WorkflowResponderAgent(
+        name="B",
+        preferred_pair=(g.F, g.F),
+        min_payoff=1.5,          # (O,O) gives responder 1 < 1.5 -> counter
+        fallback_action=g.F,
+    )
+
+    rec = run_episode(
+        episode_id="bos-counter-1",
+        game=g,
+        agent_a=a,
+        agent_b=b,
+        mode="workflow",
+        max_comm_rounds=2,
+    )
+
+    assert rec.agreement_hit is True
+    assert (rec.action_a, rec.action_b) in {(g.O, g.O), (g.F, g.F)}

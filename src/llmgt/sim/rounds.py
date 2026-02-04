@@ -15,6 +15,7 @@ def compute_rounds_to_agreement(
     final_action_b: str,
     max_comm_rounds: int,
 ) -> Optional[int]:
+
     non_system = [m for m in messages if m.role != "system"]
 
     for r in range(1, max_comm_rounds + 1):
@@ -30,4 +31,5 @@ def compute_rounds_to_agreement(
             return r
 
     return None
+
 

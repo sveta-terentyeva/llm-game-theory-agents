@@ -1,0 +1,8 @@
+game,K,n_runs,agreement_rate,nash_rate,mean_rounds_to_agreement,payoff_mean,welfare_mean
+battle_of_sexes,0,200,0.0,0.0,,0.0,0.0
+battle_of_sexes,1,200,0.0,0.0,,0.0,0.0
+battle_of_sexes,2,200,1.0,1.0,2.0,1.5,3.0
+battle_of_sexes,3,200,1.0,1.0,2.0,1.5,3.0
+battle_of_sexes,4,200,1.0,1.0,2.0,1.5,3.0
+battle_of_sexes,5,200,1.0,1.0,2.0,1.5,3.0
+battle_of_sexes,6,200,1.0,1.0,2.0,1.5,3.0

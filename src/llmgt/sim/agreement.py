@@ -8,10 +8,10 @@ from llmgt.sim.workflow import extract_accepted_pair
 def agreement_hit(
     *,
     game: Game,
-    mode: str,
     messages: list[ChatMessage],
     final_action_a: str,
     final_action_b: str,
+    mode: str = "no_workflow",
 ) -> bool:
 
     if mode == "workflow":
