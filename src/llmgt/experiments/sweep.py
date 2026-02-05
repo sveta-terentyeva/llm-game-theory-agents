@@ -3,11 +3,12 @@ from __future__ import annotations
 import csv
 from collections import defaultdict
 from pathlib import Path
-from typing import Iterable
+from typing import Iterable, Optional
 
 from llmgt.sim.runner import run_episode
 from llmgt.logging.records import EpisodeRecord
 from llmgt.agents.simple import FixedActionAgent
+from llmgt.logging.jsonl_logger import JsonlLogger
 
 
 def run_comm_sweep(
@@ -18,6 +19,7 @@ def run_comm_sweep(
     k_values: Iterable[int],
     n_runs: int,
     mode: str = "no_workflow",
+    logger: Optional[JsonlLogger] = None,
 ) -> list[EpisodeRecord]:
     """
     Run communication sweep over different K values.
@@ -34,11 +36,11 @@ def run_comm_sweep(
                 agent_b=agent_b,
                 max_comm_rounds=k,
                 mode=mode,
+                logger=logger,
             )
             records.append(rec)
 
     return records
-
 
 def summarize_by_k(records: list[EpisodeRecord]) -> list[dict]:
     """
@@ -96,7 +98,6 @@ def write_csv(rows: list[dict], path: Path) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
 
     fieldnames = list(rows[0].keys())
-
     with path.open("w", newline="", encoding="utf-8") as f:
         writer = csv.DictWriter(f, fieldnames=fieldnames)
         writer.writeheader()

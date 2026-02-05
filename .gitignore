@@ -25,3 +25,8 @@ data/runs/
 # Jupyter
 .ipynb_checkpoints/
 
+data/runs/
+data/figures/
+*.png
+*.jsonl
+*.csv

@@ -7,10 +7,13 @@ from .records import EpisodeRecord
 
 
 class JsonlLogger:
-    def __init__(self, out_dir: Path, filename: str = "episodes.jsonl") -> None:
+    def __init__(self, out_dir: Path, filename: str = "episodes.jsonl", *, overwrite: bool = True) -> None:
         self.out_dir = out_dir
         self.out_dir.mkdir(parents=True, exist_ok=True)
         self.path = self.out_dir / filename
+
+        if overwrite and self.path.exists():
+            self.path.unlink()
 
     def log_episode(self, rec: EpisodeRecord) -> None:
         with self.path.open("a", encoding="utf-8") as f:

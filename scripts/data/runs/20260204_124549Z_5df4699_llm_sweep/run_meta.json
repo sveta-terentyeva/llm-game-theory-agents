@@ -1,0 +1,17 @@
+{
+  "agent": "LLMAgent",
+  "client": "HeuristicLLMClient",
+  "k_values": [
+    0,
+    1,
+    2,
+    3,
+    4,
+    5,
+    6
+  ],
+  "mode": "workflow",
+  "n_runs": 200,
+  "notes": "Per-run outputs are stored under run_root/<game>/",
+  "tag": "llm_sweep"
+}
