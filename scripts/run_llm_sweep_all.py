@@ -69,18 +69,28 @@ def run_for_game(game, run_root, tag: str, backend_cfg: LLMBackendConfig) -> Non
 
 
 def main() -> None:
-    backend = os.getenv("LLMGT_BACKEND", "heuristic").strip().lower()  # heuristic|openai
-    openai_model = os.getenv("LLMGT_OPENAI_MODEL", "gpt-4o-mini")
+    backend = os.getenv("LLMGT_BACKEND", "heuristic").strip().lower()  # heuristic|openai|ollama
     temperature = float(os.getenv("LLMGT_TEMPERATURE", "0.7"))
     max_out = int(os.getenv("LLMGT_MAX_OUTPUT_TOKENS", "128"))
+
+    # OpenAI
+    openai_model = os.getenv("LLMGT_OPENAI_MODEL", "gpt-4o-mini")
     base_url = os.getenv("LLMGT_OPENAI_BASE_URL")  # optional
+
+    # Ollama
+    ollama_model = os.getenv("LLMGT_OLLAMA_MODEL", "llama3.1:8b")
+    ollama_host = os.getenv("LLMGT_OLLAMA_HOST", "http://localhost:11434")
+    ollama_timeout_s = float(os.getenv("LLMGT_OLLAMA_TIMEOUT_S", "120"))
 
     backend_cfg = LLMBackendConfig(
         backend=backend,  # type: ignore[arg-type]
-        openai_model=openai_model,
         temperature=temperature,
         max_output_tokens=max_out,
+        openai_model=openai_model,
         base_url=base_url,
+        ollama_model=ollama_model,
+        ollama_host=ollama_host,
+        ollama_timeout_s=ollama_timeout_s,
     )
 
     run = make_run_dir(tag=f"llm_{backend}_workflow_sweep_all", create_standard_dirs=False)
@@ -98,6 +108,9 @@ def main() -> None:
             "temperature": temperature,
             "max_output_tokens": max_out,
             "notes": "Per-game outputs under run_root/<game>/",
+            "ollama_model": ollama_model if backend == "ollama" else None,
+            "ollama_host": ollama_host if backend == "ollama" else None,
+
         },
     )
 
