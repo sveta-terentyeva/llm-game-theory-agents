@@ -2,14 +2,13 @@
 
   python -m scripts.run_pd
 """
-
 from __future__ import annotations
 
-from pathlib import Path
-
-from llmgt.agents.simple import FixedActionAgent, EchoAgent
+from llmgt.agents.simple import FixedActionAgent  # EchoAgent можна залишити за бажанням
 from llmgt.games.prisoners_dilemma import PrisonersDilemma
 from llmgt.logging.jsonl_logger import JsonlLogger
+from llmgt.logging.run_meta import write_run_meta
+from llmgt.sim.run_dir import make_run_dir
 from llmgt.sim.runner import run_experiment, summarize_theory_hits, summarize_experiment
 
 
@@ -19,11 +18,21 @@ def main() -> None:
     agent_a = FixedActionAgent(name="fixed_D_A", action=game.D)
     agent_b = FixedActionAgent(name="fixed_D_B", action=game.D)
 
-    #agent_a = EchoAgent(name="echo_A", action=game.C)
-    #agent_b = EchoAgent(name="echo_B", action=game.D)
+    run = make_run_dir(tag="pd_fixed_baseline")
+    write_run_meta(
+        run.root / "run_meta.json",
+        {
+            "tag": "pd_fixed_baseline",
+            "game": game.name,
+            "mode": "no_workflow",
+            "n_episodes": 50,
+            "max_comm_rounds": 0,
+            "agent_a": "FixedActionAgent(D)",
+            "agent_b": "FixedActionAgent(D)",
+        },
+    )
 
-    out_dir = Path("data/runs")
-    logger = JsonlLogger(out_dir=out_dir, filename="pd_episodes.jsonl")
+    logger = JsonlLogger(out_dir=run.logs_dir, filename="episodes.jsonl", overwrite=True)
 
     records = run_experiment(
         game=game,
@@ -36,17 +45,24 @@ def main() -> None:
         episode_id_prefix="pd",
     )
 
-    #print("First 5 action pairs:", [(r.action_a, r.action_b) for r in records[:5]])
-    #print("Agent A config:", agent_a)
-    #print("Agent B config:", agent_b)
-
     stats = summarize_theory_hits(records)
     summary = summarize_experiment(game, records)
 
-    print("=== PD experiment ===")
-    print(f"Logged: {out_dir / 'pd_episodes.jsonl'}")
-    print(f"Nash rate: {stats['nash_rate']:.2%}")
-    print(f"Pareto rate: {stats['pareto_rate']:.2%}")
+    write_run_meta(
+        run.root / "summary.json",
+        {
+            "agreement_rate": float(stats["agreement_rate"]),
+            "nash_rate": float(stats["nash_rate"]),
+            "pareto_rate": float(stats["pareto_rate"]),
+            "conclusion": summary.conclusion,
+        },
+    )
+
+    print("=== PD fixed baseline ===")
+    print(f"Run dir: {run.root}")
+    print(f"Logged:  {run.logs_dir / 'episodes.jsonl'}")
+    print(f"Nash rate:      {stats['nash_rate']:.2%}")
+    print(f"Pareto rate:    {stats['pareto_rate']:.2%}")
     print(f"Agreement rate: {stats['agreement_rate']:.2%}")
     print("\nConclusion:")
     print(summary.conclusion)
