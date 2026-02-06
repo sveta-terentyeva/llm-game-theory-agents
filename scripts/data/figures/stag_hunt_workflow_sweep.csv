@@ -1,8 +1,0 @@
-game,K,n_runs,agreement_rate,nash_rate,mean_rounds_to_agreement,payoff_mean,welfare_mean
-stag_hunt,0,200,0.0,0.0,,1.5,3.0
-stag_hunt,1,200,1.0,1.0,1.0,4.0,8.0
-stag_hunt,2,200,1.0,1.0,1.0,4.0,8.0
-stag_hunt,3,200,1.0,1.0,1.0,4.0,8.0
-stag_hunt,4,200,1.0,1.0,1.0,4.0,8.0
-stag_hunt,5,200,1.0,1.0,1.0,4.0,8.0
-stag_hunt,6,200,1.0,1.0,1.0,4.0,8.0

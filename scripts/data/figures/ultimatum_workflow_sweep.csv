@@ -1,8 +1,0 @@
-game,K,n_runs,agreement_rate,nash_rate,mean_rounds_to_agreement,payoff_mean,welfare_mean
-ultimatum_game,0,200,0.0,0.0,,0.0,0.0
-ultimatum_game,1,200,1.0,0.0,1.0,2.0,4.0
-ultimatum_game,2,200,1.0,0.0,1.0,2.0,4.0
-ultimatum_game,3,200,1.0,0.0,1.0,2.0,4.0
-ultimatum_game,4,200,1.0,0.0,1.0,2.0,4.0
-ultimatum_game,5,200,1.0,0.0,1.0,2.0,4.0
-ultimatum_game,6,200,1.0,0.0,1.0,2.0,4.0

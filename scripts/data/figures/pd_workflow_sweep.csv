@@ -1,8 +1,0 @@
-game,K,n_runs,agreement_rate,nash_rate,mean_rounds_to_agreement,payoff_mean,welfare_mean
-prisoners_dilemma,0,200,0.0,0.0,,2.5,5.0
-prisoners_dilemma,1,200,1.0,0.0,1.0,3.0,6.0
-prisoners_dilemma,2,200,1.0,0.0,1.0,3.0,6.0
-prisoners_dilemma,3,200,1.0,0.0,1.0,3.0,6.0
-prisoners_dilemma,4,200,1.0,0.0,1.0,3.0,6.0
-prisoners_dilemma,5,200,1.0,0.0,1.0,3.0,6.0
-prisoners_dilemma,6,200,1.0,0.0,1.0,3.0,6.0
