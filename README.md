@@ -15,3 +15,10 @@ Modes:
 
 Outputs:
 - JSONL logs per episode in `data/runs/`
+
+
+Quickstart:
+```bash
+python -m venv .venv
+source .venv/bin/activate
+pip install -e .
