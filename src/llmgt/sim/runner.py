@@ -84,6 +84,14 @@ def run_episode(
     rec.payoff_a = float(payoff_a)
     rec.payoff_b = float(payoff_b)
 
+    if rec.payoff_a is not None and rec.payoff_b is not None:
+        if rec.payoff_a > rec.payoff_b:
+            rec.winner = "agent_a"
+        elif rec.payoff_b > rec.payoff_a:
+            rec.winner = "agent_b"
+        else:
+            rec.winner = "tie"
+
     rec.nash_hit = (a, b) in game.nash_equilibria()
     rec.pareto_hit = (a, b) in game.pareto_optima()
 

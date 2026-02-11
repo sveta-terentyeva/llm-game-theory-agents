@@ -26,8 +26,11 @@ def run_for_game(game, run_root, tag: str, backend_cfg: LLMBackendConfig) -> Non
     a, b = make_llm_agents(game, backend_cfg)
     logger = JsonlLogger(out_dir=logs_dir, filename="episodes.jsonl", overwrite=True)
 
-    k_values = list(range(0, 7))
-    n_runs = 200
+    #k_values = list(range(0, 7))
+    #n_runs = 200
+    k_values = [0, 1, 2]
+    n_runs = 5
+
     mode = "workflow"  # negotiation rounds used inside the run_comm_sweep episodes
 
     records = run_comm_sweep(
@@ -40,7 +43,7 @@ def run_for_game(game, run_root, tag: str, backend_cfg: LLMBackendConfig) -> Non
         logger=logger,
     )
 
-    rows = summarize_by_k(records)
+    rows = summarize_by_k(records, game=game)
     write_csv(rows, game_dir / "summary_by_k.csv")
 
     plot_metric_by_k(
