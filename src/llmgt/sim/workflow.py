@@ -41,3 +41,6 @@ def extract_accepted_pair(messages: Iterable[ChatMessage]) -> tuple[str, str] | 
         if match:
             last = (match.group(1), match.group(2))
     return last
+
+def workflow_has_agreement(messages: Iterable[ChatMessage]) -> bool:
+    return extract_accepted_pair(messages) is not None

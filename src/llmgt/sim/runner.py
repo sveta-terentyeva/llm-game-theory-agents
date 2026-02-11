@@ -10,6 +10,8 @@ from llmgt.logging.jsonl_logger import JsonlLogger
 
 from llmgt.sim.agreement import agreement_hit
 from llmgt.sim.rounds import compute_rounds_to_agreement
+from llmgt.sim.workflow import workflow_has_agreement
+
 
 
 
@@ -61,6 +63,9 @@ def run_episode(
         rec.messages.append(ChatMessage(role="agent_b", content=msg_b))
 
         used_rounds += 1
+
+        if mode == "workflow" and workflow_has_agreement(rec.messages):
+            break
 
     rec.used_comm_rounds = used_rounds
 

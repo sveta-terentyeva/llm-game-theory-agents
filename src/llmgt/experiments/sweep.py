@@ -79,6 +79,20 @@ def summarize_by_k(records: list[EpisodeRecord], *, game=None) -> list[dict]:
         used_comm_rounds_mean = _mean(used_rounds)
         used_comm_rounds_p50 = _p50(used_rounds)
 
+        # Частка використаних раундів від дозволених K (None для K=0)
+        used_comm_rounds_over_k_mean = None
+        if k > 0:
+            used_comm_rounds_over_k_mean = _mean([float(r.used_comm_rounds) / float(k) for r in recs])
+
+        # Скільки раундів було "зайвими" після фактичної угоди (рахуємо тільки там, де угода була)
+        wasted_comm_rounds_mean = None
+        wasted = []
+        for r in recs:
+            if r.rounds_to_agreement is None:
+                continue
+            wasted.append(float(r.used_comm_rounds) - float(r.rounds_to_agreement))
+        wasted_comm_rounds_mean = _mean(wasted)
+
         payoff_mean = sum(((r.payoff_a + r.payoff_b) / 2) for r in recs if r.payoff_a is not None and r.payoff_b is not None) / n
         welfare_mean = sum((r.payoff_a + r.payoff_b) for r in recs if r.payoff_a is not None and r.payoff_b is not None) / n
         payoff_diff_mean = sum(abs(r.payoff_a - r.payoff_b) for r in recs if r.payoff_a is not None and r.payoff_b is not None) / n
@@ -130,6 +144,8 @@ def summarize_by_k(records: list[EpisodeRecord], *, game=None) -> list[dict]:
                 "mean_rounds_to_agreement": mean_rounds,
                 "used_comm_rounds_mean": used_comm_rounds_mean,
                 "used_comm_rounds_p50": used_comm_rounds_p50,
+                "used_comm_rounds_over_k_mean": used_comm_rounds_over_k_mean,
+                "wasted_comm_rounds_mean": wasted_comm_rounds_mean,
                 "payoff_mean": payoff_mean,
                 "welfare_mean": welfare_mean,
                 "payoff_diff_mean": payoff_diff_mean,
