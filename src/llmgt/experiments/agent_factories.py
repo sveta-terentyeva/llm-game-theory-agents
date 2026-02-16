@@ -4,11 +4,8 @@ from dataclasses import dataclass
 from typing import Literal, Optional
 
 from llmgt.agents import LLMAgent
-from llmgt.agents.llm import LLMAgent
 from llmgt.games.base import Game
 from llmgt.llm.heuristic import HeuristicLLMClient
-
-from llmgt.agents.llm import LLMAgent
 from llmgt.agents.strategic import StrategicLLMAgent
 
 
