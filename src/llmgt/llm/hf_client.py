@@ -103,8 +103,11 @@ class HuggingFaceChatClient:
 
         tok = self._tokenizer
 
+        prompt = None
+        attention_mask = None
+
         if hasattr(tok, "apply_chat_template") and tok.chat_template:
-            prompt_ids = tok.apply_chat_template(
+            prompt = tok.apply_chat_template(
                 hf_msgs,
                 add_generation_prompt=True,
                 return_tensors="pt",
@@ -114,13 +117,27 @@ class HuggingFaceChatClient:
             for m in hf_msgs:
                 text += f"{m['role'].upper()}: {m['content']}\n"
             text += "ASSISTANT: "
-            prompt_ids = tok(text, return_tensors="pt").input_ids
+            prompt = tok(text, return_tensors="pt")
+
+        try:
+            import torch  # type: ignore
+        except Exception as e:
+            raise RuntimeError("torch is required for HuggingFace backend") from e
+
+        if isinstance(prompt, torch.Tensor):
+            input_ids = prompt
+        else:
+            input_ids = prompt["input_ids"]
+            attention_mask = prompt.get("attention_mask")
 
         device = next(self._model.parameters()).device
-        prompt_ids = prompt_ids.to(device)
+        input_ids = input_ids.to(device)
+        if attention_mask is not None:
+            attention_mask = attention_mask.to(device)
 
         gen = self._model.generate(
-            prompt_ids,
+            input_ids=input_ids,
+            attention_mask=attention_mask,
             max_new_tokens=int(self.max_new_tokens),
             do_sample=bool(do_sample),
             temperature=max(temp, 1e-6) if do_sample else 1.0,
@@ -129,7 +146,6 @@ class HuggingFaceChatClient:
         )
 
         # Decode only the newly generated part
-        new_tokens = gen[0, prompt_ids.shape[-1]:]
+        new_tokens = gen[0, input_ids.shape[-1]:]
         out = tok.decode(new_tokens, skip_special_tokens=True).strip()
-
         return out
