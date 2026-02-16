@@ -9,7 +9,7 @@ from llmgt.llm.heuristic import HeuristicLLMClient
 from llmgt.agents.strategic import StrategicLLMAgent
 
 
-Backend = Literal["heuristic", "openai", "ollama"]
+Backend = Literal["heuristic", "openai", "ollama", "hf"]
 
 
 @dataclass(frozen=True)
@@ -18,7 +18,7 @@ class LLMBackendConfig:
 
     # Shared-ish options
     temperature: float = 0.7
-    max_output_tokens: int = 128
+    max_output_tokens: int = 16
 
     # OpenAI options
     openai_model: str = "gpt-4o-mini"
@@ -28,6 +28,11 @@ class LLMBackendConfig:
     ollama_model: str = "llama3.1:8b"
     ollama_host: str = "http://localhost:11434"
     ollama_timeout_s: float = 120.0
+
+    # HF (Transformers) options
+    hf_model: str = "mistralai/Mistral-7B-Instruct-v0.2"
+    hf_max_new_tokens: int = 128
+
 
     agent_style: Literal["basic", "strategic"] = "strategic"
 
@@ -69,6 +74,20 @@ def make_llm_agents(game: Game, cfg: LLMBackendConfig) -> tuple[LLMAgent, LLMAge
             temperature_default=cfg.temperature,
             num_predict=cfg.max_output_tokens,
             timeout_s=cfg.ollama_timeout_s,
+        )
+
+    elif cfg.backend == "hf":
+        from llmgt.llm.hf_client import HuggingFaceChatClient
+
+        client_a = HuggingFaceChatClient(
+            model_id=cfg.hf_model,
+            max_new_tokens=cfg.hf_max_new_tokens,
+            temperature_default=cfg.temperature,
+        )
+        client_b = HuggingFaceChatClient(
+            model_id=cfg.hf_model,
+            max_new_tokens=cfg.hf_max_new_tokens,
+            temperature_default=cfg.temperature,
         )
 
     else:
