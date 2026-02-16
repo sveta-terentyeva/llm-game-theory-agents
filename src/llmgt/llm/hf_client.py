@@ -103,7 +103,6 @@ class HuggingFaceChatClient:
 
         tok = self._tokenizer
 
-        # Prefer chat template if available (most instruct models provide it)
         if hasattr(tok, "apply_chat_template") and tok.chat_template:
             prompt_ids = tok.apply_chat_template(
                 hf_msgs,
@@ -117,7 +116,8 @@ class HuggingFaceChatClient:
             text += "ASSISTANT: "
             prompt_ids = tok(text, return_tensors="pt").input_ids
 
-        prompt_ids = prompt_ids.to(self._model.device)
+        device = next(self._model.parameters()).device
+        prompt_ids = prompt_ids.to(device)
 
         gen = self._model.generate(
             prompt_ids,
@@ -125,7 +125,7 @@ class HuggingFaceChatClient:
             do_sample=bool(do_sample),
             temperature=max(temp, 1e-6) if do_sample else 1.0,
             top_p=float(self.top_p),
-            pad_token_id=tok.eos_token_id,
+            pad_token_id=(tok.pad_token_id if tok.pad_token_id is not None else tok.eos_token_id),
         )
 
         # Decode only the newly generated part
