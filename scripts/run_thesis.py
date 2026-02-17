@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import json
 from pathlib import Path
 from datetime import datetime
@@ -37,9 +38,15 @@ MODES = [
     "workflow",
 ]
 
-K_VALUES = list(range(0, 7))
+def _int_env(name: str, default: int) -> int:
+    return int(os.getenv(name, str(default)))
 
-N_RUNS = 100
+def _list_env(name: str, default: str) -> list[int]:
+    return [int(x.strip()) for x in os.getenv(name, default).split(",") if x.strip()]
+
+N_RUNS = _int_env("LLMGT_N_RUNS", 50)
+
+K_VALUES = _list_env("LLMGT_K_VALUES", "0,1,2,3,4,5,6")
 
 TEMPERATURE = 0.7
 
