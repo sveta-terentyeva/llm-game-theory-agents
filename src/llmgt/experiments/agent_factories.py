@@ -31,7 +31,9 @@ class LLMBackendConfig:
 
     # HuggingFace (Transformers)
     hf_model: str = "mistralai/Mistral-7B-Instruct-v0.2"
+    hf_max_new_tokens: int = 128
 
+    # Agent behavior
     agent_style: Literal["basic", "strategic"] = "strategic"
 
 
@@ -80,12 +82,12 @@ def make_llm_agents(game: Game, cfg: LLMBackendConfig) -> tuple[LLMAgent, LLMAge
 
         client_a = HuggingFaceChatClient(
             model_id=cfg.hf_model,
-            max_new_tokens=cfg.max_output_tokens,
+            max_new_tokens=cfg.hf_max_new_tokens,
             temperature_default=cfg.temperature,
         )
         client_b = HuggingFaceChatClient(
             model_id=cfg.hf_model,
-            max_new_tokens=cfg.max_output_tokens,
+            max_new_tokens=cfg.hf_max_new_tokens,
             temperature_default=cfg.temperature,
         )
 
