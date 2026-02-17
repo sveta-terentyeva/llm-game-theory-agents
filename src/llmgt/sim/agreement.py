@@ -45,8 +45,6 @@ def agreement_hit(
     mode: str = "no_workflow",
 ) -> bool:
 
-    target: Optional[tuple[str, str]] = None
-
     if mode == "workflow":
         target = extract_accepted_pair(messages)
         return target == (final_action_a, final_action_b)
@@ -56,9 +54,8 @@ def agreement_hit(
         target = extract_last_counter(messages)
     if target is None:
         target = extract_last_proposal(messages)
+
     if target is None:
-        allowed_a = set(game.actions_for("agent_a"))
-        allowed_b = set(game.actions_for("agent_b"))
-        target = _extract_last_pair_any(messages, allowed_a=allowed_a, allowed_b=allowed_b)
+        return False
 
     return target == (final_action_a, final_action_b)
