@@ -27,3 +27,14 @@ pythonpath = ["src"]
 
 [project.scripts]
 llmgt = "llmgt.cli:main"
+
+[project.optional-dependencies]
+hf = [
+  "torch",
+  "transformers>=4.40",
+  "accelerate",
+  "sentencepiece",
+]
+ollama = [
+  "requests",
+]

@@ -16,7 +16,11 @@ from llmgt.games.battle_of_sexes import BattleOfSexes
 from llmgt.games.ultimatum import UltimatumGame
 
 
-def run_for_game(game, run_root, tag: str, backend_cfg: LLMBackendConfig) -> None:
+def _parse_int_list(s: str) -> list[int]:
+    return [int(x.strip()) for x in s.split(",") if x.strip()]
+
+
+def run_for_game(game, run_root, tag: str, backend_cfg: LLMBackendConfig, *, k_values: list[int], n_runs: int, mode: str) -> None:
     game_dir = run_root / tag
     logs_dir = game_dir / "logs"
     figs_dir = game_dir / "figures"
@@ -25,13 +29,6 @@ def run_for_game(game, run_root, tag: str, backend_cfg: LLMBackendConfig) -> Non
 
     a, b = make_llm_agents(game, backend_cfg)
     logger = JsonlLogger(out_dir=logs_dir, filename="episodes.jsonl", overwrite=True)
-
-    #k_values = list(range(0, 7))
-    #n_runs = 200
-    k_values = [0, 1, 2]
-    n_runs = 5
-
-    mode = "workflow"  # negotiation rounds used inside the run_comm_sweep episodes
 
     records = run_comm_sweep(
         game=game,
@@ -72,9 +69,14 @@ def run_for_game(game, run_root, tag: str, backend_cfg: LLMBackendConfig) -> Non
 
 
 def main() -> None:
-    backend = os.getenv("LLMGT_BACKEND", "heuristic").strip().lower()  # heuristic|openai|ollama
+    backend = os.getenv("LLMGT_BACKEND", "heuristic").strip().lower()  # heuristic|openai|ollama|hf
     temperature = float(os.getenv("LLMGT_TEMPERATURE", "0.7"))
     max_out = int(os.getenv("LLMGT_MAX_OUTPUT_TOKENS", "128"))
+
+    # Experiment params (single source of truth)
+    mode = os.getenv("LLMGT_MODE", "workflow").strip().lower()  # workflow|no_workflow
+    k_values = _parse_int_list(os.getenv("LLMGT_K_VALUES", "0,1,2"))
+    n_runs = int(os.getenv("LLMGT_N_RUNS", "5"))
 
     # OpenAI
     openai_model = os.getenv("LLMGT_OPENAI_MODEL", "gpt-4o-mini")
@@ -85,6 +87,10 @@ def main() -> None:
     ollama_host = os.getenv("LLMGT_OLLAMA_HOST", "http://localhost:11434")
     ollama_timeout_s = float(os.getenv("LLMGT_OLLAMA_TIMEOUT_S", "120"))
 
+    # HF (Transformers)
+    hf_model = os.getenv("LLMGT_HF_MODEL", "mistralai/Mistral-7B-Instruct-v0.2")
+    hf_max_new_tokens = int(os.getenv("LLMGT_HF_MAX_NEW_TOKENS", "128"))
+
     backend_cfg = LLMBackendConfig(
         backend=backend,  # type: ignore[arg-type]
         temperature=temperature,
@@ -94,36 +100,47 @@ def main() -> None:
         ollama_model=ollama_model,
         ollama_host=ollama_host,
         ollama_timeout_s=ollama_timeout_s,
+        hf_model=hf_model,
+        hf_max_new_tokens=hf_max_new_tokens,
     )
 
-    run = make_run_dir(tag=f"llm_{backend}_workflow_sweep_all", create_standard_dirs=False)
+    tag = f"llm_{backend}_{mode}_sweep_all"
+    run = make_run_dir(tag=tag, create_standard_dirs=False)
     run_root = run.root
 
     write_run_meta(
         run_root / "run_meta.json",
         {
-            "tag": f"llm_{backend}_workflow_sweep_all",
-            "mode": "workflow",
-            "k_values": list(range(0, 7)),
-            "n_runs": 200,
+            "tag": tag,
+            "mode": mode,
+            "k_values": k_values,
+            "n_runs": n_runs,
+
             "agent_backend": backend,
-            "openai_model": openai_model if backend == "openai" else None,
+
             "temperature": temperature,
             "max_output_tokens": max_out,
-            "notes": "Per-game outputs under run_root/<game>/",
+
+            "openai_model": openai_model if backend == "openai" else None,
             "ollama_model": ollama_model if backend == "ollama" else None,
             "ollama_host": ollama_host if backend == "ollama" else None,
+            "ollama_timeout_s": ollama_timeout_s if backend == "ollama" else None,
 
+            "hf_model": hf_model if backend == "hf" else None,
+            "hf_max_new_tokens": hf_max_new_tokens if backend == "hf" else None,
+
+            "notes": "Per-game outputs under run_root/<game>/",
         },
     )
 
-    run_for_game(PrisonersDilemma(), run_root, "prisoners_dilemma", backend_cfg)
-    run_for_game(StagHunt(), run_root, "stag_hunt", backend_cfg)
-    run_for_game(BattleOfSexes(), run_root, "battle_of_sexes", backend_cfg)
-    run_for_game(UltimatumGame(), run_root, "ultimatum", backend_cfg)
+    run_for_game(PrisonersDilemma(), run_root, "prisoners_dilemma", backend_cfg, k_values=k_values, n_runs=n_runs, mode=mode)
+    run_for_game(StagHunt(), run_root, "stag_hunt", backend_cfg, k_values=k_values, n_runs=n_runs, mode=mode)
+    run_for_game(BattleOfSexes(), run_root, "battle_of_sexes", backend_cfg, k_values=k_values, n_runs=n_runs, mode=mode)
+    run_for_game(UltimatumGame(), run_root, "ultimatum", backend_cfg, k_values=k_values, n_runs=n_runs, mode=mode)
 
     print(f"\nDONE. Run directory: {run_root}")
 
 
 if __name__ == "__main__":
     main()
+
