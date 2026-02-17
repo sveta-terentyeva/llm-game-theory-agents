@@ -1,50 +1,59 @@
 from __future__ import annotations
 
 import re
-from typing import Iterable, Optional, Tuple
+from typing import Iterable, Optional
 
 from llmgt.logging.records import ChatMessage
 
-_TOKEN_RE = r"([A-Za-z0-9_]+)"
-_PAIR_RE = rf"\(\s*{_TOKEN_RE}\s*,\s*{_TOKEN_RE}\s*\)"
+_PAIR_RE = r"\(\s*([A-Za-z0-9_]+)\s*,\s*([A-Za-z0-9_]+)\s*\)"
 
-_PROPOSE_RE = re.compile(rf"\bPROPOSE\s*:\s*{_PAIR_RE}\b", flags=re.IGNORECASE)
-_COUNTER_RE = re.compile(rf"\bCOUNTER\s*:\s*{_PAIR_RE}\b", flags=re.IGNORECASE)
-_ACCEPT_RE = re.compile(rf"\bACCEPT\s*:\s*{_PAIR_RE}\b", flags=re.IGNORECASE)
+_PROPOSE_RE = re.compile(r"(?i)\bpropose\b\s*:?\s*" + _PAIR_RE)
+_COUNTER_RE = re.compile(r"(?i)\b(counter|counter[-\s]?propose|counterproposal)\b\s*:?\s*" + _PAIR_RE)
+_ACCEPT_RE = re.compile(r"(?i)\b(accept|accepted|agree|agreed)\b\s*:?\s*" + _PAIR_RE)
+
+_LEGACY_PROPOSE_RE = re.compile(r"\bPROPOSE\s*:\s*" + _PAIR_RE)
+_LEGACY_COUNTER_RE = re.compile(r"\bCOUNTER\s*:\s*" + _PAIR_RE)
+_LEGACY_ACCEPT_RE = re.compile(r"\bACCEPT\s*:\s*" + _PAIR_RE)
 
 
-def _extract_last_pair(messages: Iterable[ChatMessage], pattern: re.Pattern[str]) -> Optional[Tuple[str, str]]:
-    last: Optional[Tuple[str, str]] = None
+def _iter_text(messages: Iterable[ChatMessage]) -> Iterable[str]:
     for m in messages:
-        match = pattern.search(m.content or "")
-        if match:
-            last = (match.group(1), match.group(2))
+        if m and isinstance(m.content, str):
+            yield m.content
+
+
+def extract_last_proposal(messages: Iterable[ChatMessage]) -> Optional[tuple[str, str]]:
+    last: Optional[tuple[str, str]] = None
+    for txt in _iter_text(messages):
+        m = _PROPOSE_RE.search(txt) or _LEGACY_PROPOSE_RE.search(txt)
+        if m:
+            last = (m.group(1), m.group(2))
     return last
 
 
-def _extract_first_pair(messages: Iterable[ChatMessage], pattern: re.Pattern[str]) -> Optional[Tuple[str, str]]:
-    for m in messages:
-        match = pattern.search(m.content or "")
-        if match:
-            return (match.group(1), match.group(2))
-    return None
+def extract_last_counter(messages: Iterable[ChatMessage]) -> Optional[tuple[str, str]]:
+    last: Optional[tuple[str, str]] = None
+    for txt in _iter_text(messages):
+        m = _COUNTER_RE.search(txt) or _LEGACY_COUNTER_RE.search(txt)
+        if m:
+            if m.re is _COUNTER_RE:
+                last = (m.group(2), m.group(3))
+            else:
+                last = (m.group(1), m.group(2))
+    return last
 
 
-def extract_last_proposal(messages: Iterable[ChatMessage]) -> Optional[Tuple[str, str]]:
-    return _extract_last_pair(messages, _PROPOSE_RE)
-
-
-def extract_last_counter(messages: Iterable[ChatMessage]) -> Optional[Tuple[str, str]]:
-    return _extract_last_pair(messages, _COUNTER_RE)
-
-
-def extract_accepted_pair(messages: Iterable[ChatMessage]) -> Optional[Tuple[str, str]]:
-    return _extract_last_pair(messages, _ACCEPT_RE)
-
-
-def extract_first_accepted_pair(messages: Iterable[ChatMessage]) -> Optional[Tuple[str, str]]:
-    return _extract_first_pair(messages, _ACCEPT_RE)
+def extract_accepted_pair(messages: Iterable[ChatMessage]) -> Optional[tuple[str, str]]:
+    last: Optional[tuple[str, str]] = None
+    for txt in _iter_text(messages):
+        m = _ACCEPT_RE.search(txt) or _LEGACY_ACCEPT_RE.search(txt)
+        if m:
+            if m.re is _ACCEPT_RE:
+                last = (m.group(2), m.group(3))
+            else:
+                last = (m.group(1), m.group(2))
+    return last
 
 
 def workflow_has_agreement(messages: Iterable[ChatMessage]) -> bool:
-    return extract_first_accepted_pair(messages) is not None
+    return extract_accepted_pair(messages) is not None

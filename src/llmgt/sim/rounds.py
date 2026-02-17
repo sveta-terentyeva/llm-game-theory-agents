@@ -5,7 +5,10 @@ from typing import List, Optional
 from llmgt.logging.records import ChatMessage
 from llmgt.games.base import Game
 from llmgt.sim.agreement import agreement_hit
-from llmgt.sim.workflow import workflow_has_agreement
+
+
+def _is_action_line(m: ChatMessage) -> bool:
+    return isinstance(m.content, str) and m.content.strip().upper().startswith("ACTION:")
 
 
 def compute_rounds_to_agreement(
@@ -18,23 +21,19 @@ def compute_rounds_to_agreement(
     max_comm_rounds: int,
 ) -> Optional[int]:
 
-    non_system = [m for m in messages if m.role != "system"]
+    comm = [m for m in messages if m.role != "system" and not _is_action_line(m)]
 
     for r in range(1, max_comm_rounds + 1):
-        upto = non_system[: 2 * r]
+        upto = comm[: 2 * r]
 
-        if mode == "workflow":
-            if workflow_has_agreement(upto):
-                return r
-        else:
-            if agreement_hit(
-                game=game,
-                mode=mode,
-                messages=upto,
-                final_action_a=final_action_a,
-                final_action_b=final_action_b,
-            ):
-                return r
+        if agreement_hit(
+            game=game,
+            mode=mode,
+            messages=upto,
+            final_action_a=final_action_a,
+            final_action_b=final_action_b,
+        ):
+            return r
 
     return None
 
