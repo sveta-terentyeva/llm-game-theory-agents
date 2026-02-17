@@ -12,6 +12,10 @@ def _words(text: str) -> int:
     return len(text.strip().split()) if text else 0
 
 
+def _is_action_line(text: str) -> bool:
+    return bool(text) and text.strip().upper().startswith("ACTION:")
+
+
 @dataclass(frozen=True)
 class EpisodeCommStats:
     n_messages_total: int
@@ -39,13 +43,18 @@ def compute_episode_comm_stats(rec: EpisodeRecord) -> EpisodeCommStats:
     n_a = sum(1 for m in msgs if m.role == "agent_a")
     n_b = sum(1 for m in msgs if m.role == "agent_b")
 
-    words_total = sum(_words(m.content) for m in msgs)
-    words_a = sum(_words(m.content) for m in msgs if m.role == "agent_a")
-    words_b = sum(_words(m.content) for m in msgs if m.role == "agent_b")
+    comm_msgs = [
+        m for m in msgs
+        if m.role != "system" and not _is_action_line(m.content)
+    ]
 
-    proposed = extract_last_proposal(msgs)
-    counter = extract_last_counter(msgs)
-    accepted = extract_accepted_pair(msgs)
+    words_total = sum(_words(m.content) for m in comm_msgs)
+    words_a = sum(_words(m.content) for m in comm_msgs if m.role == "agent_a")
+    words_b = sum(_words(m.content) for m in comm_msgs if m.role == "agent_b")
+
+    proposed = extract_last_proposal(comm_msgs)
+    counter = extract_last_counter(comm_msgs)
+    accepted = extract_accepted_pair(comm_msgs)
 
     follow: Optional[bool] = None
     if accepted is not None and rec.action_a is not None and rec.action_b is not None:
@@ -85,3 +94,4 @@ def welfare_gap(game: Game, action_a: str, action_b: str) -> float:
     achieved = sum(game.payoff(action_a, action_b))
     best = max(sum(game.payoff(a, b)) for a in game.actions_a() for b in game.actions_b())
     return float(best - achieved)
+
