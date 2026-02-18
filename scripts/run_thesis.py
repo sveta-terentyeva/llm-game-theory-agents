@@ -169,6 +169,12 @@ def build_all_plots(run_root: Path) -> None:
                     continue
                 game = game_dir.name
                 df = _safe_read_csv(game_dir / "summary.csv")
+
+                # older summaries used 'K'
+                df.columns = [c.strip() for c in df.columns]
+                if "k" not in df.columns and "K" in df.columns:
+                    df = df.rename(columns={"K": "k"})
+
                 df["model"] = model
                 df["mode"] = mode
                 df["game"] = game
