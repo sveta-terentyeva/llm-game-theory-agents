@@ -6,7 +6,7 @@ from typing import Iterable
 
 from llmgt.experiments.sweep import run_comm_sweep, summarize_by_k, write_csv
 from llmgt.experiments.plotting import plot_metric_by_k
-from llmgt.experiments.game_configs import make_workflow_agents
+from llmgt.experiments.agent_factories import LLMBackendConfig, make_agents_for_mode
 from llmgt.games.prisoners_dilemma import PrisonersDilemma
 from llmgt.games.stag_hunt import StagHunt
 from llmgt.games.battle_of_sexes import BattleOfSexes
@@ -54,17 +54,26 @@ def cmd_sweep(args: argparse.Namespace) -> int:
     run_dir = make_run_dir(base=Path(args.out_dir), tag=args.tag)
     logger = JsonlLogger(run_dir.logs_dir / "episodes.jsonl")
 
-    if mode == "workflow":
-        agent_a, agent_b = make_workflow_agents(game)
-    else:
-        agent_a, agent_b = make_workflow_agents(game)
-        agent_a = agent_a.__class__(name=f"{agent_a.name}_no_wf", propose_pair=agent_a.propose_pair)
-        agent_b = agent_b.__class__(
-            name=f"{agent_b.name}_no_wf",
-            fallback_action=agent_b.fallback_action,
-            preferred_pair=agent_b.preferred_pair,
-            min_payoff=agent_b.min_payoff,
-        )
+    cfg = LLMBackendConfig(
+        backend=args.backend,
+        temperature=float(args.temperature),
+        max_output_tokens=int(args.max_output_tokens),
+        # openai (optional)
+        openai_model=getattr(args, "openai_model", "gpt-4o-mini"),
+        base_url=getattr(args, "base_url", None),
+        # ollama
+        ollama_model=args.ollama_model,
+        ollama_host=args.ollama_host,
+        ollama_timeout_s=float(args.ollama_timeout_s),
+        # hf
+        hf_model=args.hf_model,
+        hf_max_new_tokens=int(args.hf_max_new_tokens),
+        # agent behavior
+        agent_style=args.agent_style,
+        workflow_level=int(args.workflow_level),
+    )
+
+    agent_a, agent_b = make_agents_for_mode(game, cfg, mode)
 
     k_values = _parse_k_values(args.k)
 
@@ -77,6 +86,7 @@ def cmd_sweep(args: argparse.Namespace) -> int:
         mode=mode,
         logger=logger,
     )
+
 
     rows = summarize_by_k(records)
     write_csv(rows, run_dir.root / "summary_by_k.csv")
@@ -103,6 +113,21 @@ def cmd_sweep(args: argparse.Namespace) -> int:
             ylabel="Mean welfare (A+B)",
             out_path=run_dir.figures_dir / "welfare_mean.png",
         )
+        plot_metric_by_k(
+            rows,
+            metric="theory_rate",
+            title=f"{game.name} — theory success vs K ({mode})",
+            ylabel="Theory success rate",
+            out_path=run_dir.figures_dir / "theory_rate.png",
+        )
+        plot_metric_by_k(
+            rows,
+            metric="mean_rounds_to_theory_hit",
+            title=f"{game.name} — rounds-to-theory-hit vs K ({mode})",
+            ylabel="Mean rounds-to-theory-hit",
+            out_path=run_dir.figures_dir / "mean_rounds_to_theory_hit.png",
+        )
+
 
     print(f"Wrote run to: {run_dir.root}")
     print(f"  logs:   {run_dir.logs_dir / 'episodes.jsonl'}")
@@ -120,6 +145,25 @@ def build_parser() -> argparse.ArgumentParser:
     s = sub.add_parser("sweep", help="Run a communication sweep over K")
     s.add_argument("--game", required=True, help="pd | stag | bos | ultimatum")
     s.add_argument("--mode", default="workflow", help="workflow | no_workflow")
+    s.add_argument("--backend", default="heuristic", choices=["heuristic", "ollama", "hf", "openai"])
+    s.add_argument("--agent-style", default="strategic", choices=["basic", "strategic"])
+    s.add_argument("--workflow-level", type=int, default=2, help="1=light, 2=standard, 3=strict (workflow mode only)")
+    s.add_argument("--temperature", type=float, default=0.7)
+    s.add_argument("--max-output-tokens", type=int, default=64)
+
+    # HF
+    s.add_argument("--hf-model", default="mistralai/Mistral-7B-Instruct-v0.2")
+    s.add_argument("--hf-max-new-tokens", type=int, default=128)
+
+    # Ollama
+    s.add_argument("--ollama-model", default="llama3.1:8b")
+    s.add_argument("--ollama-host", default="http://localhost:11434")
+    s.add_argument("--ollama-timeout-s", type=float, default=120.0)
+
+    # OpenAI (optional; you can remove later for “open-source only”)
+    s.add_argument("--openai-model", default="gpt-4o-mini")
+    s.add_argument("--base-url", default=None)
+
     s.add_argument(
         "--k",
         nargs="+",
