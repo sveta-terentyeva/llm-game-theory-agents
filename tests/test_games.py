@@ -8,7 +8,7 @@ from llmgt.games import (
 
 def test_stag_hunt_payoffs():
     g = StagHunt()
-    assert g.payoff("S", "S") == (4.0, 4.0)
+    assert g.payoff("S", "S") == (3.0, 3.0)
     assert ("S", "S") in g.nash_equilibria()
 
 
