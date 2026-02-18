@@ -5,6 +5,7 @@ from typing import List, Optional
 from llmgt.logging.records import ChatMessage
 from llmgt.games.base import Game
 from llmgt.sim.agreement import agreement_hit
+from llmgt.sim.theory import compute_theory_hits
 
 
 def _is_action_line(m: ChatMessage) -> bool:
@@ -37,4 +38,26 @@ def compute_rounds_to_agreement(
 
     return None
 
+def compute_rounds_to_theory_hit(
+    *,
+    game: Game,
+    mode: str,
+    messages: List[ChatMessage],
+    final_action_a: str,
+    final_action_b: str,
+    max_comm_rounds: int,
+) -> Optional[int]:
+
+    th0 = compute_theory_hits(game=game, final_action_a=final_action_a, final_action_b=final_action_b)
+    if not any(m.role != "system" and not _is_action_line(m) for m in messages):
+        return 1 if th0.theory_hit else None
+
+    comm = [m for m in messages if m.role != "system" and not _is_action_line(m)]
+
+    for r in range(1, max_comm_rounds + 1):
+        upto = comm[: 2 * r]
+        if upto is not None and th0.theory_hit:
+            return r
+
+    return None
 

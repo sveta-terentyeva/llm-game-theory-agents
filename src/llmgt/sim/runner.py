@@ -11,6 +11,10 @@ from llmgt.sim.agreement import agreement_hit
 from llmgt.sim.rounds import compute_rounds_to_agreement
 from llmgt.sim.workflow import workflow_has_agreement, extract_accepted_pair
 
+from llmgt.sim.theory import compute_theory_hits
+from llmgt.sim.rounds import compute_rounds_to_theory_hit
+
+
 
 class Agent(Protocol):
     name: str
@@ -99,8 +103,12 @@ def run_episode(
         else:
             rec.winner = "tie"
 
-    rec.nash_hit = (a, b) in game.nash_equilibria()
-    rec.pareto_hit = (a, b) in game.pareto_optima()
+    th = compute_theory_hits(game=game, final_action_a=a, final_action_b=b)
+    rec.nash_hit = th.nash_hit
+    rec.pareto_hit = th.pareto_hit
+    rec.pareto_nash_hit = th.pareto_nash_hit
+    rec.theory_hit = th.theory_hit
+
 
     rec.agreement_hit = agreement_hit(
         game=game,
@@ -111,6 +119,15 @@ def run_episode(
     )
 
     rec.rounds_to_agreement = compute_rounds_to_agreement(
+        game=game,
+        mode=mode,
+        messages=rec.messages,
+        final_action_a=a,
+        final_action_b=b,
+        max_comm_rounds=max_comm_rounds,
+    )
+
+    rec.rounds_to_theory_hit = compute_rounds_to_theory_hit(
         game=game,
         mode=mode,
         messages=rec.messages,
@@ -161,6 +178,8 @@ def summarize_theory_hits(records: Iterable[EpisodeRecord]) -> dict[str, float]:
     nash_hits = sum(1 for r in recs if r.nash_hit)
     pareto_hits = sum(1 for r in recs if r.pareto_hit)
     agreement_hits = sum(1 for r in recs if r.agreement_hit)
+    pareto_nash_hits = sum(1 for r in recs if r.pareto_nash_hit)
+    theory_hits = sum(1 for r in recs if r.theory_hit)
 
     return {
         "n_episodes": float(len(recs)),
@@ -170,6 +189,10 @@ def summarize_theory_hits(records: Iterable[EpisodeRecord]) -> dict[str, float]:
         "nash_rate": nash_hits / n,
         "pareto_rate": pareto_hits / n,
         "agreement_rate": agreement_hits / n,
+        "pareto_nash_hits": float(pareto_nash_hits),
+        "theory_hits": float(theory_hits),
+        "pareto_nash_rate": pareto_nash_hits / n,
+        "theory_rate": theory_hits / n,
     }
 
 

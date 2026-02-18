@@ -52,7 +52,7 @@ def test_experiment_logging_and_theory(tmp_path: Path):
     stats = summarize_theory_hits(recs)
     # для PD: (D,D) має бути Nash
     assert stats["nash_rate"] == 1.0
-    assert stats["agreement_rate"] == 1.0
+    assert stats["theory_rate"] == 1.0
 
 
 def test_episode_with_communication_rounds():

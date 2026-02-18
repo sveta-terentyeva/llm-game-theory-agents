@@ -71,9 +71,15 @@ def summarize_by_k(records: list[EpisodeRecord], *, game=None) -> list[dict]:
         agreement_rate = sum(1 for r in recs if r.agreement_hit) / n
         nash_rate = sum(1 for r in recs if r.nash_hit) / n
         pareto_rate = sum(1 for r in recs if r.pareto_hit) / n
+        pareto_nash_rate = sum(1 for r in recs if r.pareto_nash_hit) / n
+        theory_rate = sum(1 for r in recs if r.theory_hit) / n
+
 
         rounds = [r.rounds_to_agreement for r in recs if r.rounds_to_agreement is not None]
         mean_rounds = (sum(rounds) / len(rounds)) if rounds else None
+
+        rounds_theory = [r.rounds_to_theory_hit for r in recs if r.rounds_to_theory_hit is not None]
+        mean_rounds_to_theory_hit = (sum(rounds_theory) / len(rounds_theory)) if rounds_theory else None
 
         used_rounds = [float(r.used_comm_rounds) for r in recs]
         used_comm_rounds_mean = _mean(used_rounds)
@@ -163,6 +169,10 @@ def summarize_by_k(records: list[EpisodeRecord], *, game=None) -> list[dict]:
                 "regret_a_mean": regret_a_mean,
                 "regret_b_mean": regret_b_mean,
                 "welfare_gap_mean": welfare_gap_mean,
+                "pareto_nash_rate": pareto_nash_rate,
+                "theory_rate": theory_rate,
+                "mean_rounds_to_theory_hit": mean_rounds_to_theory_hit,
+
             }
         )
 

@@ -38,6 +38,9 @@ class EpisodeRecord(BaseModel):
 
     nash_hit: Optional[bool] = None
     pareto_hit: Optional[bool] = None
+    pareto_nash_hit: Optional[bool] = None
+    theory_hit: Optional[bool] = None
+    rounds_to_theory_hit: Optional[int] = None
     agreement_hit: Optional[bool] = None
     rounds_to_agreement: Optional[int] = None
 
