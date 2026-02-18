@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from llmgt.experiments import run_comm_sweep, summarize_by_k, write_csv, make_workflow_agents
+from llmgt.experiments import run_comm_sweep, summarize_by_k, write_csv, make_rule_based_workflow_agents
 from llmgt.experiments.plotting import plot_metric_by_k
 from llmgt.logging.jsonl_logger import JsonlLogger
 from llmgt.logging.run_meta import write_run_meta
@@ -19,7 +19,7 @@ def run_for_game(game, run_root, tag: str) -> None:
     logs_dir.mkdir(parents=True, exist_ok=True)
     figs_dir.mkdir(parents=True, exist_ok=True)
 
-    a, b = make_workflow_agents(game)
+    a, b = make_rule_based_workflow_agents(game)
     logger = JsonlLogger(out_dir=logs_dir, filename="episodes.jsonl", overwrite=True)
 
     k_values = list(range(0, 7))

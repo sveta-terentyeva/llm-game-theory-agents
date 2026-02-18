@@ -86,7 +86,7 @@ def workflow_config_for_game(game: Game) -> WorkflowConfig:
     )
 
 
-def make_workflow_agents(game: Game) -> tuple[WorkflowProposerAgent, WorkflowResponderAgent]:
+def make_rule_based_workflow_agents(game: Game) -> tuple[WorkflowProposerAgent, WorkflowResponderAgent]:
     cfg = workflow_config_for_game(game)
 
     agent_a = WorkflowProposerAgent(
