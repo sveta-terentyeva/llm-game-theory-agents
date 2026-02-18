@@ -1,6 +1,8 @@
 from llmgt.games import PrisonersDilemma
 from llmgt.logging.records import ChatMessage
 from llmgt.sim.rounds import compute_rounds_to_agreement
+from llmgt.sim.rounds import compute_rounds_to_theory_hit
+
 
 
 def test_rounds_to_agreement_workflow_accept_round_1():
@@ -43,10 +45,10 @@ def test_rounds_to_agreement_workflow_never():
     assert r is None
 
 
-def test_rounds_to_agreement_nash_without_chat_no_workflow():
+def test_rounds_to_theory_hit_nash_without_chat_no_workflow():
     g = PrisonersDilemma()
 
-    r = compute_rounds_to_agreement(
+    r = compute_rounds_to_theory_hit(
         game=g,
         mode="no_workflow",
         messages=[],
@@ -55,7 +57,7 @@ def test_rounds_to_agreement_nash_without_chat_no_workflow():
         max_comm_rounds=3,
     )
 
-    # Nash is known immediately
     assert r == 1
+
 
 

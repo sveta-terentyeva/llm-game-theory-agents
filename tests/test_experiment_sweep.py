@@ -37,8 +37,9 @@ def test_summarize_by_k():
 
     assert len(rows) == 2
     for row in rows:
-        assert row["agreement_rate"] == 1.0
         assert row["nash_rate"] == 1.0
+        assert row["theory_rate"] == 1.0
+
 
 def test_write_csv(tmp_path: Path):
     rows = [

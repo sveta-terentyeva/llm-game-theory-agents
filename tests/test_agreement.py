@@ -1,6 +1,8 @@
 from llmgt.games import PrisonersDilemma
 from llmgt.logging.records import ChatMessage
 from llmgt.sim.agreement import agreement_hit
+from llmgt.sim.theory import compute_theory_hits
+
 
 
 def test_extract_explicit_agreement_like_text_still_ok():
@@ -43,15 +45,22 @@ def test_no_agreement_workflow_if_accept_missing():
     )
 
 
-def test_agreement_by_theory_nash_no_workflow():
+def test_theory_hit_nash_pd_without_chat():
     g = PrisonersDilemma()
-    assert agreement_hit(
+    th = compute_theory_hits(game=g, final_action_a="D", final_action_b="D")
+    assert th.nash_hit is True
+    assert th.theory_hit is True
+
+def test_no_explicit_agreement_without_protocol_no_workflow():
+    g = PrisonersDilemma()
+    assert not agreement_hit(
         game=g,
         mode="no_workflow",
         messages=[],
         final_action_a="D",
         final_action_b="D",
     )
+
 
 
 def test_no_agreement_random_no_workflow():
