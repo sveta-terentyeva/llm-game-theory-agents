@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from typing import Protocol, Any, Optional, Iterable
-
 from collections import Counter
 
 from llmgt.games.base import Game
@@ -10,8 +9,7 @@ from llmgt.logging.jsonl_logger import JsonlLogger
 
 from llmgt.sim.agreement import agreement_hit
 from llmgt.sim.rounds import compute_rounds_to_agreement
-from llmgt.sim.workflow import workflow_has_agreement
-from llmgt.sim.workflow import extract_accepted_pair
+from llmgt.sim.workflow import workflow_has_agreement, extract_accepted_pair
 
 
 class Agent(Protocol):
@@ -51,7 +49,7 @@ def run_episode(
     used_rounds = 0
     accepted_pair: Optional[tuple[str, str]] = None
 
-    for t in range(max_comm_rounds):
+    for _ in range(max_comm_rounds):
         if not hasattr(agent_a, "send_message") or not hasattr(agent_b, "send_message"):
             break
 
@@ -63,40 +61,28 @@ def run_episode(
 
         used_rounds += 1
 
+
         if mode == "workflow" and workflow_has_agreement(rec.messages):
             accepted_pair = extract_accepted_pair(rec.messages)
             break
 
     rec.used_comm_rounds = used_rounds
 
+    if accepted_pair is not None:
+        rec.extra["accepted_pair"] = list(accepted_pair)
+
     allowed_a = set(game.actions_for("agent_a"))
     allowed_b = set(game.actions_for("agent_b"))
 
-    if mode == "workflow" and accepted_pair is not None:
-        a, b = accepted_pair
+    a = agent_a.act(game, rec.messages)
+    if a not in allowed_a:
+        raise ValueError(f"agent_a returned invalid action {a!r}. Allowed: {sorted(allowed_a)}")
+    rec.messages.append(ChatMessage(role="agent_a", content=f"ACTION: {a}"))
 
-        if a not in allowed_a:
-            raise ValueError(
-                f"workflow accepted invalid action for agent_a {a!r}. Allowed: {sorted(allowed_a)}"
-            )
-        if b not in allowed_b:
-            raise ValueError(
-                f"workflow accepted invalid action for agent_b {b!r}. Allowed: {sorted(allowed_b)}"
-            )
-
-        rec.messages.append(ChatMessage(role="agent_a", content=f"ACTION: {a}"))
-        rec.messages.append(ChatMessage(role="agent_b", content=f"ACTION: {b}"))
-
-    else:
-        a = agent_a.act(game, rec.messages)
-        if a not in allowed_a:
-            raise ValueError(f"agent_a returned invalid action {a!r}. Allowed: {sorted(allowed_a)}")
-        rec.messages.append(ChatMessage(role="agent_a", content=f"ACTION: {a}"))
-
-        b = agent_b.act(game, rec.messages)
-        if b not in allowed_b:
-            raise ValueError(f"agent_b returned invalid action {b!r}. Allowed: {sorted(allowed_b)}")
-        rec.messages.append(ChatMessage(role="agent_b", content=f"ACTION: {b}"))
+    b = agent_b.act(game, rec.messages)
+    if b not in allowed_b:
+        raise ValueError(f"agent_b returned invalid action {b!r}. Allowed: {sorted(allowed_b)}")
+    rec.messages.append(ChatMessage(role="agent_b", content=f"ACTION: {b}"))
 
     rec.action_a = a
     rec.action_b = b

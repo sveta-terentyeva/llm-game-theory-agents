@@ -40,13 +40,14 @@ def compute_episode_comm_stats(rec: EpisodeRecord) -> EpisodeCommStats:
     msgs = rec.messages or []
     n_total = len(msgs)
     n_sys = sum(1 for m in msgs if m.role == "system")
-    n_a = sum(1 for m in msgs if m.role == "agent_a")
-    n_b = sum(1 for m in msgs if m.role == "agent_b")
 
     comm_msgs = [
         m for m in msgs
         if m.role != "system" and not _is_action_line(m.content)
     ]
+
+    n_a = sum(1 for m in comm_msgs if m.role == "agent_a")
+    n_b = sum(1 for m in comm_msgs if m.role == "agent_b")
 
     words_total = sum(_words(m.content) for m in comm_msgs)
     words_a = sum(_words(m.content) for m in comm_msgs if m.role == "agent_a")
