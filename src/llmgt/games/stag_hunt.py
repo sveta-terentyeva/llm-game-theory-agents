@@ -10,11 +10,11 @@ class StagHunt(Game):
       S = Stag
       H = Hare
 
-    Payoffs (A,B):
-      (S,S) -> (4,4)
-      (S,H) -> (0,3)
-      (H,S) -> (3,0)
-      (H,H) -> (3,3)
+    Payoffs (A,B) — aligned with paper (2411.05990):
+      (S,S) -> (3,3)
+      (S,H) -> (0,1)
+      (H,S) -> (1,0)
+      (H,H) -> (1,1)
 
     Theory:
       Nash equilibria: (S,S), (H,H)
@@ -31,13 +31,13 @@ class StagHunt(Game):
 
     def payoff(self, a: str, b: str) -> tuple[float, float]:
         if a == self.S and b == self.S:
-            return (4.0, 4.0)
-        if a == self.S and b == self.H:
-            return (0.0, 3.0)
-        if a == self.H and b == self.S:
-            return (3.0, 0.0)
-        if a == self.H and b == self.H:
             return (3.0, 3.0)
+        if a == self.S and b == self.H:
+            return (0.0, 1.0)
+        if a == self.H and b == self.S:
+            return (1.0, 0.0)
+        if a == self.H and b == self.H:
+            return (1.0, 1.0)
         raise ValueError(f"Invalid actions: a={a!r}, b={b!r}")
 
     def nash_equilibria(self) -> set[tuple[str, str]]:
@@ -45,4 +45,6 @@ class StagHunt(Game):
 
     def pareto_optima(self) -> set[tuple[str, str]]:
         return {(self.S, self.S)}
+
+
 
