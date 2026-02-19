@@ -141,7 +141,7 @@ def run_single_experiment(
         logger=logger,
     )
 
-    rows = summarize_by_k(records)
+    rows = summarize_by_k(records, game=game)
     df = pd.DataFrame(rows)
 
     df.to_csv(out_dir / "summary.csv", index=False)
