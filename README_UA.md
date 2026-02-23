@@ -293,7 +293,7 @@ python scripts/run_comm_experiment.py
 Генерується через `summarize_by_k()` (`src/llmgt/experiments/sweep.py`).
 Колонки включають (не повний перелік):
 
-- `K`, `n_runs`, `game`
+- `k`, `n_runs`, `game`
 - частки: `agreement_rate`, `nash_rate`, `pareto_rate`, `pareto_nash_rate`, `theory_rate`
 - раунди: `mean_rounds_to_agreement`, `mean_rounds_to_theory_hit`
 - використання комунікації: `used_comm_rounds_mean`, `used_comm_rounds_p50`, `used_comm_rounds_over_k_mean`, `wasted_comm_rounds_mean`
@@ -302,6 +302,11 @@ python scripts/run_comm_experiment.py
 - статистика тексту: `msg_count_mean`, `words_total_mean`, `words_a_mean`, `words_b_mean`
 - маркери намірів: `propose_rate`, `counter_rate`, `accept_rate`, `follow_accept_rate`
 - опційно (якщо передати game у summarizer): `regret_a_mean`, `regret_b_mean`, `welfare_gap_mean`
+
+Uncertainty / variability:
+
+- Для багатьох числових метрик `summarize_by_k()` також додає колонки `*_std` (вибіркове стандартне відхилення).
+  Їх зручно використовувати для error bars і для опису розкиду результатів між запусками.
 
 ### Графіки
 
@@ -364,4 +369,3 @@ pytest -q
 - **Ollama connection/timeouts** → перевір, що сервер запущений, і `--ollama-host` правильний.
 - **HF out-of-memory** → візьми меншу модель, зменш `--hf-max-new-tokens`, або запускай на CPU.
 - **OpenAI auth errors** → перевір змінну середовища з API ключем (часто `OPENAI_API_KEY`).
-

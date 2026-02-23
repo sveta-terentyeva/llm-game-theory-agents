@@ -66,6 +66,8 @@ One simulation run of a game between **agent A** and **agent B**:
 
 ### Communication rounds `K`
 `K` is the **maximum** number of chat rounds allowed *before* choosing actions.
+
+In aggregated CSV outputs the communication budget is stored in column **`k`**.
 The simulator also records:
 
 - `used_comm_rounds` — how many rounds were actually used
@@ -293,7 +295,7 @@ Path:
 Produced by `summarize_by_k()` (`src/llmgt/experiments/sweep.py`).
 Columns include (not exhaustive):
 
-- `K`, `n_runs`, `game`
+- `k`, `n_runs`, `game`
 - rates: `agreement_rate`, `nash_rate`, `pareto_rate`, `pareto_nash_rate`, `theory_rate`
 - rounds: `mean_rounds_to_agreement`, `mean_rounds_to_theory_hit`
 - communication usage: `used_comm_rounds_mean`, `used_comm_rounds_p50`, `used_comm_rounds_over_k_mean`, `wasted_comm_rounds_mean`
@@ -302,6 +304,11 @@ Columns include (not exhaustive):
 - text stats: `msg_count_mean`, `words_total_mean`, `words_a_mean`, `words_b_mean`
 - intent markers: `propose_rate`, `counter_rate`, `accept_rate`, `follow_accept_rate`
 - optional (if summarizer is given a game): `regret_a_mean`, `regret_b_mean`, `welfare_gap_mean`
+
+Uncertainty / variability:
+
+- For many numeric metrics, `summarize_by_k()` also outputs `*_std` columns (sample standard deviation).
+  These are useful for error bars and reporting variance across runs.
 
 ### Plots
 
@@ -351,7 +358,7 @@ pytest -q
 
 For stable diploma results:
 
-- Keep `K`, `n_runs`, `mode`, and backend configs fixed when comparing conditions.
+- Keep `K` (communication budget), `n_runs`, `mode`, and backend configs fixed when comparing conditions.
 - Record model identifiers and sampling parameters: `--temperature`, `--max-output-tokens`.
 - Store raw episode logs (`episodes.jsonl`) — they contain the full dialogue + final actions.
 - Prefer running multiple independent runs and reporting confidence intervals (LLM sampling variance).
