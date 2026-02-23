@@ -1,3 +1,5 @@
+"""Core simulation runner: episodes, experiments, and summaries."""
+
 from __future__ import annotations
 
 from typing import Protocol, Any, Optional, Iterable

@@ -1,3 +1,5 @@
+"""Per-game baseline configurations for rule-based workflow agents."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass

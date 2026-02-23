@@ -1,3 +1,5 @@
+"""Pydantic data models for episode records and experiment summaries."""
+
 from __future__ import annotations
 
 from datetime import datetime, timezone

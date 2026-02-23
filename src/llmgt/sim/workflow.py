@@ -1,3 +1,10 @@
+"""Workflow protocol extraction (PROPOSE / COUNTER / ACCEPT).
+
+These helpers scan a conversation for structured negotiation markers and
+return the extracted action pairs.  Used by both the simulation runner
+and the metrics module.
+"""
+
 from __future__ import annotations
 
 import re

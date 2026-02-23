@@ -1,3 +1,5 @@
+"""Per-episode communication statistics, regret, and welfare-gap metrics."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass

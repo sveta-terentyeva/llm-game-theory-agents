@@ -1,3 +1,5 @@
+"""LLM client protocol and test helpers (``ScriptedLLMClient``)."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass

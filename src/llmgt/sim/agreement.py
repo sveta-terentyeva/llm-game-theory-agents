@@ -1,3 +1,9 @@
+"""Agreement detection between agents.
+
+An "agreement" means the final actions match a pair that was explicitly
+proposed/accepted during the communication phase.
+"""
+
 from __future__ import annotations
 
 import re

@@ -1,3 +1,5 @@
+"""Theory-hit computation: Nash, Pareto, and combined success indicators."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass

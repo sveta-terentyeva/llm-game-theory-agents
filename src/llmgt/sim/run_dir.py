@@ -1,3 +1,5 @@
+"""Run-directory management: timestamped output folders."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass

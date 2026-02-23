@@ -1,3 +1,9 @@
+"""Rule-based workflow agents for the PROPOSE/COUNTER/ACCEPT protocol.
+
+These agents are deterministic (no LLM calls) and are used as baselines
+for the workflow interaction mode.
+"""
+
 from __future__ import annotations
 
 from dataclasses import dataclass

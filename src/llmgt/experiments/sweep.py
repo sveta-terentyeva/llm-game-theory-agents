@@ -1,3 +1,10 @@
+"""Communication-budget sweep and per-*k* aggregation.
+
+The ``run_comm_sweep`` function runs multiple episodes for each value of *k*
+(max communication rounds).  ``summarize_by_k`` computes aggregate metrics
+grouped by *k*, and ``write_csv`` persists the result.
+"""
+
 from __future__ import annotations
 
 import csv

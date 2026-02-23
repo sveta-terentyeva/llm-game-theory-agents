@@ -1,3 +1,5 @@
+"""Small simulation helpers (episode-ID generation, etc.)."""
+
 from __future__ import annotations
 
 import uuid

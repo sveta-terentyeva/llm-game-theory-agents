@@ -1,3 +1,5 @@
+"""Abstract base class for two-player normal-form games."""
+
 from __future__ import annotations
 
 from abc import ABC, abstractmethod

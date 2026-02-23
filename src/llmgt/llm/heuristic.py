@@ -1,3 +1,9 @@
+"""Deterministic heuristic LLM client (no external API calls).
+
+Always proposes cooperative / Pareto-optimal outcomes.  Used for fast
+smoke-tests and as a baseline that requires no GPU or network.
+"""
+
 from __future__ import annotations
 
 from typing import Sequence

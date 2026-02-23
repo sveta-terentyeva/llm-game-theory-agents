@@ -1,3 +1,5 @@
+"""Simple baseline agents for testing and benchmarking."""
+
 from __future__ import annotations
 from dataclasses import dataclass
 
@@ -7,11 +9,14 @@ from llmgt.games.base import Game
 
 @dataclass(frozen=True)
 class FixedActionAgent:
+    """Agent that always plays the same fixed action (no communication)."""
+
     name: str
     action: str
 
     def act(self, game: Game, messages: list[ChatMessage]) -> str:
         return self.action
+
 
 @dataclass
 class EchoAgent:

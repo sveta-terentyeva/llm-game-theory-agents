@@ -1,3 +1,5 @@
+"""Write run metadata (configuration snapshot) to a JSON file."""
+
 from __future__ import annotations
 
 import json
