@@ -1,58 +1,23 @@
+"""Basic (non-strategic) LLM agent.
+
+Uses free-form prompts with minimal game-theory guidance.
+"""
+
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Optional, Literal
-import re
+from typing import Literal
 
+from llmgt.agents.parsing import extract_accepted_pair, format_history, parse_action
 from llmgt.games.base import Game
 from llmgt.logging.records import ChatMessage
 from llmgt.llm.client import LLMClient, LLMMessage
 
 
-_PAIR_RE = re.compile(r"\(([A-Za-z]+)\s*,\s*([A-Za-z]+)\)")
-_ACCEPT_RE = re.compile(r"\bACCEPT\b\s*:\s*" + _PAIR_RE.pattern)
-
-
-def _format_history(messages: list[ChatMessage], limit: int = 12) -> str:
-    tail = messages[-limit:] if len(messages) > limit else messages
-    return "\n".join(f"{m.role}: {m.content}" for m in tail)
-
-
-def _extract_accepted_pair(messages: list[ChatMessage]) -> Optional[tuple[str, str]]:
-    for m in messages:
-        mm = _ACCEPT_RE.search(m.content)
-        if mm:
-            return (mm.group(1), mm.group(2))
-    return None
-
-
-def _parse_action(text: str, allowed: tuple[str, ...]) -> Optional[str]:
-    t = text.strip()
-    candidates = [t]
-
-    if "\n" in t:
-        candidates.append(t.splitlines()[0].strip())
-
-    for prefix in ("ACTION:", "Action:", "action:", "Final:", "final:"):
-        if t.startswith(prefix):
-            candidates.append(t[len(prefix):].strip())
-
-    candidates.append(t.strip("()[]{} ").strip())
-
-    for c in candidates:
-        for a in allowed:
-            if c == a:
-                return a
-
-    for a in allowed:
-        if f" {a}" in f" {t} ":
-            return a
-
-    return None
-
-
 @dataclass
 class LLMAgent:
+    """Simple LLM agent: free-form messaging + action extraction."""
+
     name: str
     client: LLMClient
     role: Literal["agent_a", "agent_b"]
@@ -70,7 +35,7 @@ class LLMAgent:
             "Here X is agent_a's final action and Y is agent_b's final action.\n"
         )
         user = (
-            f"Conversation so far:\n{_format_history(messages)}\n\n"
+            f"Conversation so far:\n{format_history(messages)}\n\n"
             "Send ONE short message. If you accept a plan, output exactly: ACCEPT: (X,Y). "
             "If you propose, output exactly: PROPOSE: (X,Y)."
         )
@@ -84,7 +49,7 @@ class LLMAgent:
     def act(self, game: Game, messages: list[ChatMessage]) -> str:
         allowed = game.actions_for(self.role)
 
-        accepted = _extract_accepted_pair(messages)
+        accepted = extract_accepted_pair(messages)
         if accepted is not None:
             x, y = accepted
             chosen = x if self.role == "agent_a" else y
@@ -98,7 +63,7 @@ class LLMAgent:
             "You MUST output exactly one valid action token, and nothing else."
         )
         user = (
-            f"Conversation so far:\n{_format_history(messages)}\n\n"
+            f"Conversation so far:\n{format_history(messages)}\n\n"
             "Output your final action token."
         )
 
@@ -107,7 +72,7 @@ class LLMAgent:
             temperature=self.temperature,
         )
 
-        parsed = _parse_action(reply, allowed)
+        parsed = parse_action(reply, allowed)
         if parsed is not None:
             return parsed
 
