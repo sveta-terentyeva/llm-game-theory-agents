@@ -4,6 +4,7 @@ from llmgt.games import PrisonersDilemma
 from llmgt.agents.simple import FixedActionAgent
 from llmgt.experiments import run_comm_sweep, summarize_by_k, write_csv
 
+
 def test_comm_sweep_runs():
     g = PrisonersDilemma()
     a = FixedActionAgent(name="A", action="D")
@@ -19,6 +20,7 @@ def test_comm_sweep_runs():
 
     assert len(records) == 9
     assert all(r.game == g.name for r in records)
+
 
 def test_summarize_by_k():
     g = PrisonersDilemma()
@@ -39,12 +41,16 @@ def test_summarize_by_k():
     for row in rows:
         assert row["nash_rate"] == 1.0
         assert row["theory_rate"] == 1.0
+        assert "k" in row
+
+    # std columns should exist for numeric metrics even if values may be None
+    assert any(k.endswith("_std") for k in rows[0].keys())
 
 
 def test_write_csv(tmp_path: Path):
     rows = [
-        {"game": "pd", "K": 0, "agreement_rate": 0.5},
-        {"game": "pd", "K": 1, "agreement_rate": 1.0},
+        {"game": "pd", "k": 0, "agreement_rate": 0.5},
+        {"game": "pd", "k": 1, "agreement_rate": 1.0},
     ]
 
     path = tmp_path / "out.csv"
