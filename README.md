@@ -169,7 +169,7 @@ The `summarize_by_k()` function computes means, standard deviations, and rates a
 
 ```bash
 # Clone and install
-git clone <repo-url>
+git clone <git@github.com:sveta-terentyeva/llm-game-theory-agents.git>
 cd llm-game-theory-agents
 python -m venv .venv
 source .venv/bin/activate

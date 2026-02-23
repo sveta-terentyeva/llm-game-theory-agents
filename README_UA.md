@@ -169,7 +169,7 @@
 
 ```bash
 # Клонувати та встановити
-git clone <repo-url>
+git clone <git@github.com:sveta-terentyeva/llm-game-theory-agents.git>
 cd llm-game-theory-agents
 python -m venv .venv
 source .venv/bin/activate
