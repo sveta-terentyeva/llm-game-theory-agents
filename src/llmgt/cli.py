@@ -87,43 +87,43 @@ def cmd_sweep(args: argparse.Namespace) -> int:
         logger=logger,
     )
 
-
-    rows = summarize_by_k(records)
+    # Pass game to summarizer so regret/welfare-gap metrics are available.
+    rows = summarize_by_k(records, game=game)
     write_csv(rows, run_dir.root / "summary_by_k.csv")
 
     if args.plots:
         plot_metric_by_k(
             rows,
             metric="agreement_rate",
-            title=f"{game.name} — agreement vs K ({mode})",
+            title=f"{game.name} — agreement vs k ({mode})",
             ylabel="Agreement rate",
             out_path=run_dir.figures_dir / "agreement_rate.png",
         )
         plot_metric_by_k(
             rows,
             metric="mean_rounds_to_agreement",
-            title=f"{game.name} — rounds-to-agreement vs K ({mode})",
+            title=f"{game.name} — rounds-to-agreement vs k ({mode})",
             ylabel="Mean rounds-to-agreement",
             out_path=run_dir.figures_dir / "mean_rounds_to_agreement.png",
         )
         plot_metric_by_k(
             rows,
             metric="welfare_mean",
-            title=f"{game.name} — welfare vs K ({mode})",
+            title=f"{game.name} — welfare vs k ({mode})",
             ylabel="Mean welfare (A+B)",
             out_path=run_dir.figures_dir / "welfare_mean.png",
         )
         plot_metric_by_k(
             rows,
             metric="theory_rate",
-            title=f"{game.name} — theory success vs K ({mode})",
+            title=f"{game.name} — theory success vs k ({mode})",
             ylabel="Theory success rate",
             out_path=run_dir.figures_dir / "theory_rate.png",
         )
         plot_metric_by_k(
             rows,
             metric="mean_rounds_to_theory_hit",
-            title=f"{game.name} — rounds-to-theory-hit vs K ({mode})",
+            title=f"{game.name} — rounds-to-theory-hit vs k ({mode})",
             ylabel="Mean rounds-to-theory-hit",
             out_path=run_dir.figures_dir / "mean_rounds_to_theory_hit.png",
         )

@@ -5,6 +5,14 @@ from typing import Sequence
 import math
 
 
+def _get_k(r: dict) -> int:
+    if "k" in r:
+        return int(r["k"])
+    if "K" in r:
+        return int(r["K"])
+    raise KeyError("Row is missing 'k' (or legacy 'K')")
+
+
 def plot_metric_by_k(
     rows: Sequence[dict],
     *,
@@ -23,7 +31,7 @@ def plot_metric_by_k(
 
     out_path.parent.mkdir(parents=True, exist_ok=True)
 
-    ks_all = [int(r["K"]) for r in rows]
+    ks_all = [_get_k(r) for r in rows]
     vals_all = [r.get(metric) for r in rows]
     vals_all = [float("nan") if v is None else float(v) for v in vals_all]
 
@@ -36,7 +44,7 @@ def plot_metric_by_k(
 
     plt.figure()
     plt.plot(ks, vals, marker="o")
-    plt.xlabel("K (max communication rounds)")
+    plt.xlabel("k (max communication rounds)")
     plt.ylabel(ylabel)
     plt.title(title)
     plt.grid(True)
@@ -44,4 +52,3 @@ def plot_metric_by_k(
     plt.savefig(out_path, format="png", dpi=200)
     plt.close()
     return True
-

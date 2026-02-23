@@ -315,6 +315,15 @@ def main() -> None:
         },
     )
 
+    # If you already have results under run_root/raw, you can rebuild plots without
+    # any LLM backend dependencies:
+    #   LLMGT_PLOTS_ONLY=1 python -m scripts.run_thesis
+    if os.getenv("LLMGT_PLOTS_ONLY", "0") == "1":
+        build_all_plots(run_root)
+        print("\nPLOTS-ONLY COMPLETE")
+        print(run_root)
+        return
+
     for model_name, model_id in MODELS.items():
         for mode in MODES:
             for game_name, game in GAMES.items():
