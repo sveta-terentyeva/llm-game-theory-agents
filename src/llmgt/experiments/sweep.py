@@ -4,6 +4,7 @@ import csv
 from collections import defaultdict
 from pathlib import Path
 from typing import Iterable, Optional
+import math
 
 from llmgt.sim.runner import run_episode
 from llmgt.logging.records import EpisodeRecord
@@ -57,8 +58,17 @@ def _p50(xs: list[float]) -> float | None:
     return float((xs2[mid - 1] + xs2[mid]) / 2)
 
 
+def _std(xs: list[float]) -> float | None:
+    """Sample standard deviation (ddof=1). Returns None for <2 values."""
+    if len(xs) < 2:
+        return None
+    m = sum(xs) / len(xs)
+    var = sum((x - m) ** 2 for x in xs) / (len(xs) - 1)
+    return math.sqrt(var)
+
+
 def summarize_by_k(records: list[EpisodeRecord], *, game=None) -> list[dict]:
-    """Aggregate metrics grouped by max_comm_rounds (K)."""
+    """Aggregate metrics grouped by max_comm_rounds (k)."""
     buckets: dict[int, list[EpisodeRecord]] = defaultdict(list)
     for r in records:
         buckets[r.max_comm_rounds].append(r)
@@ -74,50 +84,69 @@ def summarize_by_k(records: list[EpisodeRecord], *, game=None) -> list[dict]:
         pareto_nash_rate = sum(1 for r in recs if r.pareto_nash_hit) / n
         theory_rate = sum(1 for r in recs if r.theory_hit) / n
 
+        rounds = [float(r.rounds_to_agreement) for r in recs if r.rounds_to_agreement is not None]
+        mean_rounds = _mean(rounds)
+        mean_rounds_std = _std(rounds)
 
-        rounds = [r.rounds_to_agreement for r in recs if r.rounds_to_agreement is not None]
-        mean_rounds = (sum(rounds) / len(rounds)) if rounds else None
-
-        rounds_theory = [r.rounds_to_theory_hit for r in recs if r.rounds_to_theory_hit is not None]
-        mean_rounds_to_theory_hit = (sum(rounds_theory) / len(rounds_theory)) if rounds_theory else None
+        rounds_theory = [float(r.rounds_to_theory_hit) for r in recs if r.rounds_to_theory_hit is not None]
+        mean_rounds_to_theory_hit = _mean(rounds_theory)
+        mean_rounds_to_theory_hit_std = _std(rounds_theory)
 
         used_rounds = [float(r.used_comm_rounds) for r in recs]
         used_comm_rounds_mean = _mean(used_rounds)
+        used_comm_rounds_std = _std(used_rounds)
         used_comm_rounds_p50 = _p50(used_rounds)
 
-        # Частка використаних раундів від дозволених K (None для K=0)
         used_comm_rounds_over_k_mean = None
+        used_comm_rounds_over_k_std = None
         if k > 0:
-            used_comm_rounds_over_k_mean = _mean([float(r.used_comm_rounds) / float(k) for r in recs])
+            used_over_k = [float(r.used_comm_rounds) / float(k) for r in recs]
+            used_comm_rounds_over_k_mean = _mean(used_over_k)
+            used_comm_rounds_over_k_std = _std(used_over_k)
 
-        # Скільки раундів було "зайвими" після фактичної угоди (рахуємо тільки там, де угода була)
-        wasted_comm_rounds_mean = None
         wasted = []
         for r in recs:
             if r.rounds_to_agreement is None:
                 continue
             wasted.append(float(r.used_comm_rounds) - float(r.rounds_to_agreement))
         wasted_comm_rounds_mean = _mean(wasted)
+        wasted_comm_rounds_std = _std(wasted)
 
-        payoff_mean = sum(((r.payoff_a + r.payoff_b) / 2) for r in recs if r.payoff_a is not None and r.payoff_b is not None) / n
-        welfare_mean = sum((r.payoff_a + r.payoff_b) for r in recs if r.payoff_a is not None and r.payoff_b is not None) / n
-        payoff_diff_mean = sum(abs(r.payoff_a - r.payoff_b) for r in recs if r.payoff_a is not None and r.payoff_b is not None) / n
+        payoffs_avg = [((r.payoff_a + r.payoff_b) / 2) for r in recs if r.payoff_a is not None and r.payoff_b is not None]
+        welfare_vals = [(r.payoff_a + r.payoff_b) for r in recs if r.payoff_a is not None and r.payoff_b is not None]
+        payoff_diff_vals = [abs(r.payoff_a - r.payoff_b) for r in recs if r.payoff_a is not None and r.payoff_b is not None]
+
+        payoff_mean = (sum(payoffs_avg) / n) if payoffs_avg else None
+        welfare_mean = (sum(welfare_vals) / n) if welfare_vals else None
+        payoff_diff_mean = (sum(payoff_diff_vals) / n) if payoff_diff_vals else None
+
+        payoff_mean_std = _std([float(x) for x in payoffs_avg])
+        welfare_mean_std = _std([float(x) for x in welfare_vals])
+        payoff_diff_mean_std = _std([float(x) for x in payoff_diff_vals])
 
         a_win_rate = sum(1 for r in recs if r.winner == "agent_a") / n
         b_win_rate = sum(1 for r in recs if r.winner == "agent_b") / n
         tie_rate = sum(1 for r in recs if r.winner == "tie") / n
 
         comm = [compute_episode_comm_stats(r) for r in recs]
-        msg_count_mean = _mean([float(c.n_messages_total) for c in comm])
-        words_total_mean = _mean([float(c.n_words_total) for c in comm])
-        words_a_mean = _mean([float(c.n_words_agent_a) for c in comm])
-        words_b_mean = _mean([float(c.n_words_agent_b) for c in comm])
+        msg_count = [float(c.n_messages_total) for c in comm]
+        words_total = [float(c.n_words_total) for c in comm]
+        words_a = [float(c.n_words_agent_a) for c in comm]
+        words_b = [float(c.n_words_agent_b) for c in comm]
+
+        msg_count_mean = _mean(msg_count)
+        msg_count_std = _std(msg_count)
+        words_total_mean = _mean(words_total)
+        words_total_std = _std(words_total)
+        words_a_mean = _mean(words_a)
+        words_a_std = _std(words_a)
+        words_b_mean = _mean(words_b)
+        words_b_std = _std(words_b)
 
         propose_rate = sum(1 for c in comm if c.has_propose) / n
         counter_rate = sum(1 for c in comm if c.has_counter) / n
         accept_rate = sum(1 for c in comm if c.has_accept) / n
 
-        # Частка епізодів, де якщо ACCEPT був, то ACTION-и йому відповідають
         if any(c.actions_follow_accept is not None for c in comm):
             denom = sum(1 for c in comm if c.actions_follow_accept is not None)
             follow_accept_rate = sum(1 for c in comm if c.actions_follow_accept is True) / denom
@@ -127,6 +156,9 @@ def summarize_by_k(records: list[EpisodeRecord], *, game=None) -> list[dict]:
         regret_a_mean = None
         regret_b_mean = None
         welfare_gap_mean = None
+        regret_a_std = None
+        regret_b_std = None
+        welfare_gap_std = None
         if game is not None:
             ra, rb, wg = [], [], []
             for r in recs:
@@ -138,41 +170,58 @@ def summarize_by_k(records: list[EpisodeRecord], *, game=None) -> list[dict]:
             regret_a_mean = _mean(ra)
             regret_b_mean = _mean(rb)
             welfare_gap_mean = _mean(wg)
+            regret_a_std = _std(ra)
+            regret_b_std = _std(rb)
+            welfare_gap_std = _std(wg)
 
         rows.append(
             {
                 "game": recs[0].game,
-                "K": k,
+                "k": k,
                 "n_runs": n,
                 "agreement_rate": agreement_rate,
                 "nash_rate": nash_rate,
                 "pareto_rate": pareto_rate,
                 "mean_rounds_to_agreement": mean_rounds,
+                "mean_rounds_to_agreement_std": mean_rounds_std,
                 "used_comm_rounds_mean": used_comm_rounds_mean,
+                "used_comm_rounds_std": used_comm_rounds_std,
                 "used_comm_rounds_p50": used_comm_rounds_p50,
                 "used_comm_rounds_over_k_mean": used_comm_rounds_over_k_mean,
+                "used_comm_rounds_over_k_std": used_comm_rounds_over_k_std,
                 "wasted_comm_rounds_mean": wasted_comm_rounds_mean,
+                "wasted_comm_rounds_std": wasted_comm_rounds_std,
                 "payoff_mean": payoff_mean,
+                "payoff_mean_std": payoff_mean_std,
                 "welfare_mean": welfare_mean,
+                "welfare_mean_std": welfare_mean_std,
                 "payoff_diff_mean": payoff_diff_mean,
+                "payoff_diff_mean_std": payoff_diff_mean_std,
                 "a_win_rate": a_win_rate,
                 "b_win_rate": b_win_rate,
                 "tie_rate": tie_rate,
                 "msg_count_mean": msg_count_mean,
+                "msg_count_mean_std": msg_count_std,
                 "words_total_mean": words_total_mean,
+                "words_total_mean_std": words_total_std,
                 "words_a_mean": words_a_mean,
+                "words_a_mean_std": words_a_std,
                 "words_b_mean": words_b_mean,
+                "words_b_mean_std": words_b_std,
                 "propose_rate": propose_rate,
                 "counter_rate": counter_rate,
                 "accept_rate": accept_rate,
                 "follow_accept_rate": follow_accept_rate,
                 "regret_a_mean": regret_a_mean,
+                "regret_a_mean_std": regret_a_std,
                 "regret_b_mean": regret_b_mean,
+                "regret_b_mean_std": regret_b_std,
                 "welfare_gap_mean": welfare_gap_mean,
+                "welfare_gap_mean_std": welfare_gap_std,
                 "pareto_nash_rate": pareto_nash_rate,
                 "theory_rate": theory_rate,
                 "mean_rounds_to_theory_hit": mean_rounds_to_theory_hit,
-
+                "mean_rounds_to_theory_hit_std": mean_rounds_to_theory_hit_std,
             }
         )
 

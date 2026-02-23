@@ -6,6 +6,10 @@ from datetime import datetime, timezone
 from typing import Dict, List
 
 import pandas as pd
+
+# Use non-interactive backend for reliability in headless runs
+import matplotlib
+matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
 from llmgt.experiments import run_comm_sweep, summarize_by_k
@@ -71,6 +75,52 @@ def _safe_read_csv(path: Path) -> pd.DataFrame:
     return pd.read_csv(path)
 
 
+def _normalize_summary_df(df: pd.DataFrame) -> pd.DataFrame:
+    """Normalize summary.csv schemas across versions.
+
+    Common issues that can break/warp plots:
+    - older summaries use 'K' not 'k'
+    - K parsed as string/object, causing lexicographic sorting
+    - duplicate K rows (e.g., concatenated runs) causing jagged lines
+    """
+
+    df = df.copy()
+    df.columns = [str(c).strip() for c in df.columns]
+
+    if "k" not in df.columns and "K" in df.columns:
+        df = df.rename(columns={"K": "k"})
+
+    if "k" not in df.columns:
+        raise ValueError("Summary is missing 'k' (or legacy 'K') column")
+
+    df["k"] = pd.to_numeric(df["k"], errors="coerce")
+    df = df.dropna(subset=["k"])
+    df["k"] = df["k"].astype(int)
+
+    # Ensure numeric metrics where possible
+    for c in df.columns:
+        if c in {"game", "mode", "model"}:
+            continue
+        if c == "k":
+            continue
+        df[c] = pd.to_numeric(df[c], errors="coerce")
+
+    # Aggregate duplicates deterministically
+    # (mean for metrics, sum for n_runs if present)
+    if df.duplicated(subset=["k"]).any():
+        agg: dict[str, str] = {}
+        for c in df.columns:
+            if c == "k":
+                continue
+            if c == "n_runs":
+                agg[c] = "sum"
+            else:
+                agg[c] = "mean"
+        df = df.groupby("k", as_index=False).agg(agg)
+
+    return df.sort_values("k")
+
+
 def _plot_lines(
     *,
     df: pd.DataFrame,
@@ -83,17 +133,37 @@ def _plot_lines(
     out_path: Path,
 ) -> None:
     plt.figure()
-    for g in sorted(df[group_col].unique()):
-        s = df[df[group_col] == g].sort_values(x)
+    for g in sorted(df[group_col].dropna().unique()):
+        s = df[df[group_col] == g].copy()
         if s.empty or y not in s.columns:
             continue
-        series = s[y]
+        s = s.sort_values(x)
+
+        series = pd.to_numeric(s[y], errors="coerce")
         if series.isna().all():
             continue
-        plt.plot(s[x], s[y], marker="o", label=str(g))
+
+        # Drop NaNs to avoid broken/"teleporting" segments
+        mask = ~series.isna() & ~pd.to_numeric(s[x], errors="coerce").isna()
+        xs = s.loc[mask, x]
+        ys = series.loc[mask]
+        if len(xs) == 0:
+            continue
+
+        # Optional error bars if *_std exists
+        y_std_col = f"{y}_std"
+        if y_std_col in s.columns:
+            yerr = pd.to_numeric(s.loc[mask, y_std_col], errors="coerce")
+            if not yerr.isna().all():
+                plt.errorbar(xs, ys, yerr=yerr, marker="o", capsize=3, label=str(g))
+                continue
+
+        plt.plot(xs, ys, marker="o", label=str(g))
+
     plt.title(title)
     plt.xlabel(xlabel)
     plt.ylabel(ylabel)
+    plt.grid(True, alpha=0.3)
     plt.legend()
     out_path.parent.mkdir(parents=True, exist_ok=True)
     plt.savefig(out_path, dpi=200, bbox_inches="tight")
@@ -169,11 +239,7 @@ def build_all_plots(run_root: Path) -> None:
                     continue
                 game = game_dir.name
                 df = _safe_read_csv(game_dir / "summary.csv")
-
-                # older summaries used 'K'
-                df.columns = [c.strip() for c in df.columns]
-                if "k" not in df.columns and "K" in df.columns:
-                    df = df.rename(columns={"K": "k"})
+                df = _normalize_summary_df(df)
 
                 df["model"] = model
                 df["mode"] = mode
@@ -186,6 +252,7 @@ def build_all_plots(run_root: Path) -> None:
     df_all = pd.concat(data, ignore_index=True)
     df_all.to_csv(run_root / "thesis_all_results.csv", index=False)
 
+    # Prefer workflow-only model comparison plots
     for game in sorted(df_all["game"].unique()):
         for metric in METRICS:
             subset = df_all[(df_all["game"] == game) & (df_all["mode"] == "workflow")]
@@ -204,6 +271,7 @@ def build_all_plots(run_root: Path) -> None:
                 out_path=plots_dir / "model_comparison" / f"{game}_{metric}_models_workflow.png",
             )
 
+    # Mode comparison plots
     for game in sorted(df_all["game"].unique()):
         for model in sorted(df_all["model"].unique()):
             for metric in METRICS:
