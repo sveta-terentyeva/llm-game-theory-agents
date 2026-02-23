@@ -1,37 +1,76 @@
-# LLM Game-Theoretic Simulations
+# LLM Game-Theory Agents
 
-Дослідницький симулятор для **класичних двогравцевих ігор** з **агентами на базі LLM** (а також простими baseline-агентами).
-Репозиторій задуманий як база для дипломної/кваліфікаційної роботи з питання:
+[![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/downloads/)
+[![Tests](https://img.shields.io/badge/tests-51%20passed-brightgreen.svg)](#тестування)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
-> **Як обмежений бюджет комунікації `K` (кількість раундів діалогу до ходу) впливає на домовленість, результат з точки зору рівноваг та добробут у класичних іграх?**
+Дослідницький симулятор для **класичних двогравцевих ігор** з **агентами на базі LLM** (та простими baseline-агентами).  
+Створено як кодову базу для дипломної/кваліфікаційної роботи з дослідження:
 
-Підтримуються два режими взаємодії:
+> **Як обмежений бюджет комунікації *K* (кількість раундів діалогу до ходу) впливає на домовленість, рівноважні результати та добробут у класичних іграх — і чи покращує структуроване «workflow prompting» ці результати?**
 
-- `no_workflow`: вільна/неструктурована комунікація (baseline)
-- `workflow`: структуровані підказки (workflow prompting), які спрямовують агента через фази на кшталт аналіз → пропозиція → контрпропозиція → прийняття
-
-Англійська версія: [`README.md`](README.md).
+Англійська версія: [`README.md`](README.md)
 
 ---
 
 ## Зміст
 
+- [Мотивація та дослідницьке питання](#мотивація-та-дослідницьке-питання)
+- [Огляд архітектури](#огляд-архітектури)
 - [Підтримувані ігри](#підтримувані-ігри)
-- [Ключові поняття і метрики](#ключові-поняття-і-метрики)
+- [Типи агентів](#типи-агентів)
+- [Ключові поняття та метрики](#ключові-поняття-та-метрики)
 - [Встановлення](#встановлення)
-- [LLM бекенди (налаштування)](#llm-бекенди-налаштування)
+- [LLM бекенди](#llm-бекенди)
 - [Запуск експериментів](#запуск-експериментів)
-  - [Communication sweep по K (рекомендовано)](#communication-sweep-по-k-рекомендовано)
-  - [Скрипти](#скрипти)
-- [Вихідні дані / артефакти](#вихідні-дані--артефакти)
-  - [Структура папки запуску](#структура-папки-запуску)
-  - [Логи епізодів (JSONL)](#логи-епізодів-jsonl)
-  - [Агреговані метрики (CSV)](#агреговані-метрики-csv)
-  - [Графіки](#графіки)
+- [Вихідні артефакти](#вихідні-артефакти)
 - [Структура проєкту](#структура-проєкту)
 - [Тестування](#тестування)
-- [Нотатки про відтворюваність](#нотатки-про-відтворюваність)
-- [Troubleshooting](#troubleshooting)
+- [Відомі проблеми та проєктні рішення](#відомі-проблеми-та-проєктні-рішення)
+- [Відтворюваність](#відтворюваність)
+- [Усунення несправностей](#усунення-несправностей)
+
+---
+
+## Мотивація та дослідницьке питання
+
+Класична теорія ігор передбачає абсолютно раціональних гравців. Сучасні LLM можна розглядати
+як обмежено-раціональних гравців, що *комунікують* перед вибором дій. Цей проєкт
+досліджує:
+
+1. **Бюджет комунікації `K`** (0 = без діалогу, 1..6 = раунди діалогу до дії) — як він впливає на досягнення домовленостей, рівноваг Неша, оптимумів Парето та сумарного добробуту.
+2. **Workflow prompting** (структуроване міркування: домінантні стратегії → найкращі відповіді → Неш → Парето → рішення) у порівнянні з вільною комунікацією.
+3. Різні **LLM бекенди** (евристичний baseline, локальні моделі Ollama, HuggingFace Transformers, OpenAI API) під одним протоколом.
+
+Симулятор запускає сотні епізодів на кожну конфігурацію, логує повні діалоги та обчислює
+агреговані метрики зі стандартними відхиленнями, готові для публікації.
+
+---
+
+## Огляд архітектури
+
+```
+┌─────────────┐     ┌──────────────┐     ┌─────────────────┐
+│  Гра         │     │  Агент A     │     │  Агент B         │
+│  (виграші,   │◄────│  (send_msg,  │────►│  (send_msg,      │
+│   Неш,       │     │   act)       │     │   act)           │
+│   Парето)    │     └──────┬───────┘     └──────┬───────────┘
+└──────┬───────┘            │                    │
+       │           ┌───────▼────────────────────▼──────────┐
+       │           │         Simulation Runner              │
+       │           │  • цикл комунікації (K раундів)       │
+       └──────────►│  • збір дій                            │
+                   │  • обчислення виграшів                 │
+                   │  • theory-hit / agreement detection    │
+                   └───────────────┬────────────────────────┘
+                                   │
+                   ┌───────────────▼────────────────────────┐
+                   │         Логування та метрики            │
+                   │  • JSONL записи епізодів               │
+                   │  • агрегація по K (CSV)                │
+                   │  • графіки (PNG)                       │
+                   └────────────────────────────────────────┘
+```
 
 ---
 
@@ -39,333 +78,261 @@
 
 Реалізовано в `src/llmgt/games/`:
 
-- **Prisoner’s Dilemma** (`pd`)
-- **Stag Hunt** (`stag`)
-- **Battle of the Sexes** (`bos`)
-- **Ultimatum Game** (`ultimatum`)
+| Гра | Дії | Рівноваги Неша | Оптимуми Парето | Ключова напруга |
+|-----|-----|----------------|-----------------|-----------------|
+| **Дилема в'язня** (`pd`) | C, D | (D,D) | (C,C) | Індивідуальна vs. колективна раціональність |
+| **Полювання на оленя** (`stag`) | S, H | (S,S), (H,H) | (S,S) | Домінування ризику vs. домінування виграшу |
+| **Битва статей** (`bos`) | O, F | (O,O), (F,F) | (O,O), (F,F) | Координація при конфліктних уподобаннях |
+| **Гра-ультиматум** (`ultimatum`) | Пропонувач: L,F / Відповідач: A,R | (L,A) | (F,A) | Справедливість vs. рівновага, досконала для підігор |
 
-Кожна гра надає:
-
-- множини допустимих дій: `actions_for(player)`
-- функцію виграшів: `payoff(action_a, action_b)`
-- теоретичні множини (де застосовно):
-  - `nash_equilibria()`
-  - `pareto_optima()`
+Кожен клас гри надає:
+- `actions_for(role)` — набори дій для конкретної ролі (важливо для асиметричних ігор, як Ультиматум)
+- `payoff(action_a, action_b)` → `(float, float)`
+- `nash_equilibria()` → `set[tuple[str, str]]`
+- `pareto_optima()` → `set[tuple[str, str]]`
 
 ---
 
-## Ключові поняття і метрики
+## Типи агентів
+
+### Baseline-агенти (без LLM)
+
+| Агент | Опис |
+|-------|------|
+| `FixedActionAgent` | Завжди грає фіксовану дію. Без комунікації. |
+| `EchoAgent` | Повторює останнє отримане повідомлення. Фіксована фінальна дія. |
+| `WorkflowProposerAgent` | Детермінований агент протоколу PROPOSE/ACCEPT. |
+| `WorkflowResponderAgent` | Приймає або контрпропонує на основі порогу виграшу. |
+| `StochasticWorkflowResponderAgent` | Ймовірність прийняття зростає з номером раунду. |
+
+### LLM-агенти
+
+| Агент | Опис |
+|-------|------|
+| `LLMAgent` | Вільна комунікація з мінімальним ігро-теоретичним керівництвом. |
+| `StrategicLLMAgent` | Промпти з таблицею виграшів та структурованим протоколом (PROPOSE/COUNTER/ACCEPT). |
+| `WorkflowStrategicLLMAgent` | Повний workflow теоретико-ігрового міркування (домінантні стратегії → найкращі відповіді → Неш → Парето → рішення). Налаштовувана глибина через `workflow_level` (1–3). |
+
+### Протокол переговорів
+
+Усі комунікативні агенти слідують протоколу **PROPOSE / COUNTER / ACCEPT**:
+
+```
+Раунд 1: Агент A → PROPOSE: (X,Y)     # X = дія A, Y = дія B
+         Агент B → ACCEPT: (X,Y)       # або COUNTER: (X',Y')
+Раунд 2: Агент A → PROPOSE: (X',Y')   # повторна пропозиція
+         Агент B → ACCEPT: (X',Y')     # фінальна домовленість
+```
+
+Коли `ACCEPT` виявлено у workflow-режимі, комунікація завершується достроково.
+
+---
+
+## Ключові поняття та метрики
 
 ### Епізод
-Один запуск гри між **агентом A** та **агентом B**:
+Один запуск симуляції: опціональна комунікація (до *K* раундів) → дії → виграші → метрики.
 
-1. опціональна комунікація (до `K` раундів)
-2. кожен агент обирає дію (`ACTION: ...`)
-3. обчислюються виграші
-4. обчислюються метрики теорії ігор / домовленості та записуються в лог
+### Бюджет комунікації `K`
+Максимальна кількість раундів діалогу до вибору дій. Sweep-експеримент варіює *K* від 0 до 6, щоб вивчити вплив обсягу комунікації.
 
-### Раунди комунікації `K`
-`K` — це **максимальна** кількість раундів діалогу *до* вибору дій.
-Додатково логуються:
+### Метрики (на епізод)
 
-- `used_comm_rounds` — скільки раундів фактично використали
-- у `workflow` режимі симуляція може завершити діалог раніше, якщо виявлено `ACCEPT`
+| Метрика | Опис |
+|---------|------|
+| `agreement_hit` | Чи відповідають фінальні дії тому, про що домовились під час комунікації? |
+| `rounds_to_agreement` | Перший раунд, де з'явилась домовленість |
+| `nash_hit` | Чи відповідає результат рівновазі Неша? |
+| `pareto_hit` | Чи відповідає результат оптимуму Парето? |
+| `theory_hit` | Комбінований успіх: Парето-Неш, якщо існує, інакше Неш |
+| `rounds_to_theory_hit` | Перший раунд, де було погоджено теоретично цільовий результат |
+| `welfare` | Сума виграшів: `payoff_a + payoff_b` |
+| `winner` | Хто отримав більший виграш (або нічия) |
 
-### Домовленість (agreement)
-Домовленість визначається на основі діалогу + фінальних дій і логується як:
+### Агреговані метрики (на K)
 
-- `agreement_hit: bool | None`
-- `rounds_to_agreement: int | None`
+Функція `summarize_by_k()` обчислює середні, стандартні відхилення та частки по всіх епізодах для кожного *K*. Ключові колонки `summary_by_k.csv`:
 
-### “Theory hits” (влучання в теоретичні розв’язки)
-Для фінальної пари дій обчислюється:
-
-- `nash_hit`
-- `pareto_hit`
-- `pareto_nash_hit`
-- `theory_hit` (узагальнений індикатор “успіху”)
-- `rounds_to_theory_hit`
-
-### Добробут (welfare)
-З виграшів:
-
-- `welfare = payoff_a + payoff_b`
-- в агрегованих метриках також є `payoff_mean` та `payoff_diff_mean`
+- **Частки**: `agreement_rate`, `nash_rate`, `pareto_rate`, `theory_rate`
+- **Раунди**: `mean_rounds_to_agreement`, `mean_rounds_to_theory_hit`
+- **Виграші**: `welfare_mean`, `payoff_mean`, `payoff_diff_mean`
+- **Комунікація**: `used_comm_rounds_mean`, `wasted_comm_rounds_mean`
+- **Протокол**: `propose_rate`, `counter_rate`, `accept_rate`, `follow_accept_rate`
+- **Ігро-теоретичні**: `regret_a_mean`, `regret_b_mean`, `welfare_gap_mean`
+- Усі числові метрики мають колонки `*_std` (стандартне відхилення) для побудови error bars.
 
 ---
 
 ## Встановлення
 
-Вимоги:
-
-- Python **>= 3.10**
-
-Швидкий старт (editable install):
+**Вимоги:** Python ≥ 3.10
 
 ```bash
+# Клонувати та встановити
+git clone <repo-url>
+cd llm-game-theory-agents
 python -m venv .venv
 source .venv/bin/activate
 pip install -e .
-```
 
-Опційні extras з `pyproject.toml`:
-
-- HuggingFace / Transformers бекенд:
-
-```bash
-pip install -e ".[hf]"
-```
-
-- Ollama бекенд (HTTP-клієнт):
-
-```bash
-pip install -e ".[ollama]"
-```
-
-Побудова графіків (опційно):
-
-```bash
+# Опційно: побудова графіків
 pip install matplotlib
+
+# Опційно: HuggingFace бекенд (рекомендовано GPU)
+pip install -e ".[hf]"
+
+# Опційно: Ollama бекенд
+pip install -e ".[ollama]"
 ```
 
 ---
 
-## LLM бекенди (налаштування)
+## LLM бекенди
 
-CLI підтримує такі бекенди:
+| Бекенд | Прапорець | Вимоги | Випадок використання |
+|--------|-----------|--------|---------------------|
+| `heuristic` | `--backend heuristic` | Нічого | Швидкі smoke-тести, детермінований baseline |
+| `ollama` | `--backend ollama` | Локальний сервер Ollama | Локальні відкриті моделі (Llama, Mistral) |
+| `hf` | `--backend hf` | `torch`, `transformers` | Пряма інференція через HuggingFace (рекомендовано GPU) |
+| `openai` | `--backend openai` | пакет `openai` + API ключ | Моделі OpenAI API |
 
-- `heuristic` — детермінований baseline (без зовнішніх API)
-- `openai` — OpenAI Responses API
-- `ollama` — локальний Ollama сервер через HTTP
-- `hf` — локальне виконання через HuggingFace Transformers
+### Налаштування
 
-Спільні параметри:
+| Параметр | За замовчуванням | Опис |
+|----------|-----------------|------|
+| `--temperature` | 0.7 | Температура семплінгу |
+| `--max-output-tokens` | 64 | Макс. токенів на відповідь LLM |
+| `--agent-style` | `strategic` | `basic` або `strategic` |
+| `--workflow-level` | 2 | Глибина workflow: 1=легкий, 2=стандартний, 3=суворий |
 
-- `--temperature`
-- `--max-output-tokens`
-
-### OpenAI
-
-- Модель вибирається через `--openai-model` (дефолт: `gpt-4o-mini`)
-- Опціональний `--base-url` для сумісних gateway/proxy
-- Авторизація: зазвичай через змінні середовища, які очікує OpenAI SDK (часто `OPENAI_API_KEY`)
-
-### Ollama
-
-- `--ollama-model` (дефолт: `llama3.1:8b`)
-- `--ollama-host` (дефолт: `http://localhost:11434`)
-- `--ollama-timeout-s` (дефолт: `120`)
-
-### HuggingFace Transformers
-
-- `--hf-model` (дефолт: `mistralai/Mistral-7B-Instruct-v0.2`)
-- `--hf-max-new-tokens` (дефолт: `128`)
-
-Примітка: великі моделі можуть потребувати GPU та значних ресурсів RAM/VRAM.
+Backend-специфічні опції: див. `llmgt sweep --help`.
 
 ---
 
 ## Запуск експериментів
 
-У проєкті є CLI entrypoint:
-
-- `llmgt` → `src/llmgt/cli.py`
-
-### Communication sweep по K (рекомендовано)
-
-Це основний драйвер експериментів для дипломної оцінки.
-Команда проганяє `n_runs` епізодів для кожного `K` і записує:
-
-- `logs/episodes.jsonl` (сирі логи епізодів)
-- `summary_by_k.csv` (агрегація метрик)
-- `figures/*.png` (опційні графіки)
-
-Швидкий smoke-test на heuristic backend:
+### CLI: Communication Sweep (основний експеримент)
 
 ```bash
-llmgt sweep --game pd --mode workflow --backend heuristic --k 0..6 --n-runs 50 --plots
-```
-
-Приклад з Ollama:
-
-```bash
-llmgt sweep --game stag --mode workflow --backend ollama \
-  --ollama-model llama3.1:8b --ollama-host http://localhost:11434 \
-  --k 0..6 --n-runs 200 --plots
-```
-
-Приклад з OpenAI:
-
-```bash
-llmgt sweep --game bos --mode no_workflow --backend openai \
-  --openai-model gpt-4o-mini --temperature 0.7 --max-output-tokens 64 \
-  --k 0..6 --n-runs 200 --plots
-```
-
-Приклад з HuggingFace:
-
-```bash
-llmgt sweep --game ultimatum --mode workflow --backend hf \
-  --hf-model mistralai/Mistral-7B-Instruct-v0.2 --hf-max-new-tokens 128 \
+# Швидкий smoke-тест (heuristic, ~1 секунда)
+llmgt sweep --game pd --mode workflow --backend heuristic \
   --k 0..6 --n-runs 50 --plots
+
+# Ollama з локальною Llama 3.1
+llmgt sweep --game stag --mode workflow --backend ollama \
+  --ollama-model llama3.1:8b --k 0..6 --n-runs 200 --plots
+
+# HuggingFace Transformers
+llmgt sweep --game bos --mode workflow --backend hf \
+  --hf-model mistralai/Mistral-7B-Instruct-v0.2 --k 0..6 --n-runs 50 --plots
+
+# OpenAI API
+llmgt sweep --game ultimatum --mode no_workflow --backend openai \
+  --openai-model gpt-4o-mini --k 0..6 --n-runs 200 --plots
 ```
-
-#### Параметри CLI (`llmgt sweep`)
-
-Основні:
-
-- `--game`: `pd | stag | bos | ultimatum`
-- `--mode`: `workflow | no_workflow`
-- `--k`: або діапазон `0..6`, або явний список `--k 0 1 2 3`
-- `--n-runs`: епізодів на кожне K (дефолт: `200`)
-- `--out-dir`: базова директорія для результатів (дефолт: `data/runs`)
-- `--tag`: мітка, що додається до назви папки запуску
-- `--plots`: зберегти PNG графіки (потрібен `matplotlib`)
-
-Поведінка агента:
-
-- `--agent-style`: `basic | strategic`
-- `--workflow-level`: `1 | 2 | 3` (лише для workflow режиму)
-
-Backend-специфічні:
-
-- HF: `--hf-model`, `--hf-max-new-tokens`
-- Ollama: `--ollama-model`, `--ollama-host`, `--ollama-timeout-s`
-- OpenAI: `--openai-model`, `--base-url`
 
 ### Скрипти
 
-Папка `scripts/` містить “convenience runners” для швидких прогонів і дипломних серій, наприклад:
+Папка `scripts/` містить попередньо налаштовані запускачі експериментів:
 
-- `scripts/run_comm_experiment.py`
-- `scripts/run_llm_sweep_all.py`
-- `scripts/run_workflow_sweep_all.py`
-- `scripts/run_pd.py`, `scripts/run_pd_workflow.py`, `scripts/run_pd_llm.py`
-- `scripts/run_thesis.py`
-
-Типовий запуск:
+| Скрипт | Опис |
+|--------|------|
+| `run_pd.py` | Фіксовані агенти для PD (baseline) |
+| `run_pd_llm.py` | LLM-агенти на PD (евристичний бекенд) |
+| `run_pd_workflow.py` | Стохастичні workflow-агенти, sweep по PD |
+| `run_comm_experiment.py` | Sweep комунікації з фіксованими агентами |
+| `run_workflow_sweep_all.py` | Rule-based workflow sweep по всіх 4 іграх |
+| `run_llm_sweep_all.py` | LLM sweep по всіх 4 іграх (бекенд через змінні середовища) |
+| `run_thesis.py` | Повний pipeline для диплома: всі моделі × всі ігри × всі режими → графіки |
 
 ```bash
-python scripts/run_comm_experiment.py
+# Приклад: повний прогон з TinyLlama
+LLMGT_N_RUNS=50 python scripts/run_thesis.py
 ```
 
 ---
 
-## Вихідні дані / артефакти
+## Вихідні артефакти
 
 ### Структура папки запуску
 
-Кожен запуск створює нову папку всередині `data/runs/` (або `--out-dir`).
-Назва папки має таймстемп:
-
-- `YYYYMMDD_HHMMSSZ_<salt>_<tag>`
-
-Стандартні підпапки:
-
-- `logs/`
-- `figures/`
+```
+data/runs/20260223_082328Z_9f29a20_workflow_sweep_all/
+├── run_meta.json              # Знімок конфігурації
+├── prisoners_dilemma/
+│   ├── logs/
+│   │   └── episodes.jsonl     # Сирі записи епізодів
+│   ├── summary_by_k.csv       # Агреговані метрики
+│   └── figures/
+│       ├── agreement_rate.png
+│       ├── mean_rounds_to_agreement.png
+│       ├── welfare_mean.png
+│       ├── theory_rate.png
+│       └── mean_rounds_to_theory_hit.png
+├── stag_hunt/
+│   └── ...
+├── battle_of_sexes/
+│   └── ...
+└── ultimatum/
+    └── ...
+```
 
 ### Логи епізодів (JSONL)
 
-Шлях:
+Кожен рядок — серіалізований `EpisodeRecord`:
 
-- `.../logs/episodes.jsonl`
-
-Кожен рядок — серіалізований `EpisodeRecord` (див. `src/llmgt/logging/records.py`).
-Важливі поля:
-
-- ідентифікатори: `episode_id`, `game`, `mode`
-- комунікація: `max_comm_rounds`, `used_comm_rounds`
-- моделі: `model_a`, `model_b`
-- діалог: `messages[]` з `{role, content, ts_utc}`
-- результат: `action_a`, `action_b`, `payoff_a`, `payoff_b`, `winner`
-- theory hits: `nash_hit`, `pareto_hit`, `pareto_nash_hit`, `theory_hit`, `rounds_to_theory_hit`
-- домовленість: `agreement_hit`, `rounds_to_agreement`
-- інше: `extra` (наприклад, у workflow режимі може містити `accepted_pair`)
-- час: `started_at_utc`, `finished_at_utc`
-
-### Агреговані метрики (CSV)
-
-Шлях:
-
-- `.../summary_by_k.csv`
-
-Генерується через `summarize_by_k()` (`src/llmgt/experiments/sweep.py`).
-Колонки включають (не повний перелік):
-
-- `k`, `n_runs`, `game`
-- частки: `agreement_rate`, `nash_rate`, `pareto_rate`, `pareto_nash_rate`, `theory_rate`
-- раунди: `mean_rounds_to_agreement`, `mean_rounds_to_theory_hit`
-- використання комунікації: `used_comm_rounds_mean`, `used_comm_rounds_p50`, `used_comm_rounds_over_k_mean`, `wasted_comm_rounds_mean`
-- виграші: `payoff_mean`, `welfare_mean`, `payoff_diff_mean`
-- “перемоги”: `a_win_rate`, `b_win_rate`, `tie_rate`
-- статистика тексту: `msg_count_mean`, `words_total_mean`, `words_a_mean`, `words_b_mean`
-- маркери намірів: `propose_rate`, `counter_rate`, `accept_rate`, `follow_accept_rate`
-- опційно (якщо передати game у summarizer): `regret_a_mean`, `regret_b_mean`, `welfare_gap_mean`
-
-Uncertainty / variability:
-
-- Для багатьох числових метрик `summarize_by_k()` також додає колонки `*_std` (вибіркове стандартне відхилення).
-  Їх зручно використовувати для error bars і для опису розкиду результатів між запусками.
+```json
+{
+  "episode_id": "pd-K3-run42",
+  "game": "prisoners_dilemma",
+  "mode": "workflow",
+  "max_comm_rounds": 3,
+  "used_comm_rounds": 2,
+  "messages": [
+    {"role": "system", "content": "Episode started..."},
+    {"role": "agent_a", "content": "PROPOSE: (C,C)"},
+    {"role": "agent_b", "content": "ACCEPT: (C,C)"},
+    {"role": "agent_a", "content": "ACTION: C"},
+    {"role": "agent_b", "content": "ACTION: C"}
+  ],
+  "action_a": "C", "action_b": "C",
+  "payoff_a": 3.0, "payoff_b": 3.0,
+  "nash_hit": false, "pareto_hit": true,
+  "theory_hit": false,
+  "agreement_hit": true,
+  "rounds_to_agreement": 1
+}
+```
 
 ### Графіки
 
-Якщо увімкнути `--plots`, CLI збереже:
+Генеруються з прапорцем `--plots`. Графіки показують значення метрик vs. *K* з опціональними error bars (з колонок `*_std`):
 
-- `figures/agreement_rate.png`
-- `figures/mean_rounds_to_agreement.png`
-- `figures/welfare_mean.png`
-- `figures/theory_rate.png`
-- `figures/mean_rounds_to_theory_hit.png`
-
-Побудова графіків реалізована в `src/llmgt/experiments/plotting.py`. Якщо `matplotlib` не встановлений, plotting буде пропущено (без падіння).
+- `agreement_rate.png` — частка епізодів, де агенти домовились
+- `welfare_mean.png` — середній сумарний виграш
+- `theory_rate.png` — частка, що відповідає теоретичному розв'язку
+- `mean_rounds_to_agreement.png` — як швидко агенти досягають домовленості
+- `mean_rounds_to_theory_hit.png` — раунди до досягнення теоретичного результату
 
 ---
 
 ## Структура проєкту
 
-Високорівнева мапа:
-
-- `src/llmgt/cli.py` — CLI (`llmgt sweep`)
-- `src/llmgt/games/` — ігри та теоретичні множини
-- `src/llmgt/agents/` — агенти (`LLMAgent`, стратегічні та workflow-варіанти)
-- `src/llmgt/llm/` — LLM клієнти:
-  - `heuristic.py` (baseline)
-  - `openai_client.py`
-  - `ollama_client.py`
-  - `hf_client.py`
-- `src/llmgt/sim/` — симуляція епізодів + логіка agreement/theory + run directory
-- `src/llmgt/experiments/` — sweeps, агрегація, графіки, фабрики агентів
-- `src/llmgt/logging/` — JSONL логер + Pydantic записи
-- `scripts/` — скрипти для запусків
-- `tests/` — тестовий набір (pytest)
-
----
-
-## Тестування
-
-Запуск тестів:
-
-```bash
-pytest -q
 ```
-
----
-
-## Нотатки про відтворюваність
-
-Щоб результати диплома були стабільнішими:
-
-- Фіксуй `K`, `n_runs`, `mode` і параметри бекенда при порівнянні умов.
-- Записуй ідентифікатори моделей та параметри семплінгу: `--temperature`, `--max-output-tokens`.
-- Зберігай “сирі” логи (`episodes.jsonl`) — вони містять повний діалог + фінальні дії.
-- Для LLM бажано робити кілька незалежних прогонів і будувати довірчі інтервали (варіативність семплінгу).
-
----
-
-## Troubleshooting
-
-- **Нема графіків / “Plotting skipped”** → встанови `matplotlib`.
-- **Ollama connection/timeouts** → перевір, що сервер запущений, і `--ollama-host` правильний.
-- **HF out-of-memory** → візьми меншу модель, зменш `--hf-max-new-tokens`, або запускай на CPU.
-- **OpenAI auth errors** → перевір змінну середовища з API ключем (часто `OPENAI_API_KEY`).
+src/llmgt/
+├── __init__.py                    # Корінь пакету
+├── cli.py                         # CLI точка входу (llmgt sweep)
+│
+├── games/                         # Визначення ігор
+│   ├── base.py                    # Абстрактний базовий клас Game
+│   ├── prisoners_dilemma.py       # Дилема в'язня
+│   ├── stag_hunt.py               # Полювання на оленя
+│   ├── battle_of_sexes.py         # Битва статей
+│   └── ultimatum.py               # Гра-ультиматум
+│
+├── agents/                        # Реалізації агентів
+│   ├── parsing.py                 # ★ Спільні утиліти парсингу (рефакторинг)
+│   ├── simple.py                  # FixedActionAgent, EchoAgent
+│   ├── workflow.py                # Rule-based workflow агенти
+│   ├── llm.py                     # Базовий LLM агент
+│   ├── strategic.py               |

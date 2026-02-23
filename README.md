@@ -1,373 +1,449 @@
-# LLM Game-Theoretic Simulations
+# LLM Game-Theory Agents
 
-A research-oriented simulator for **two-player classical games** with **LLM-based agents** (plus simple baselines).
-This repository is meant to support diploma/thesis work on the question:
+[![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/downloads/)
+[![Tests](https://img.shields.io/badge/tests-51%20passed-brightgreen.svg)](#testing)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
-> **How does a limited communication budget `K` (number of pre-play dialogue rounds) affect agreement, equilibrium outcomes, and welfare in classical games?**
+A research-oriented simulator for **two-player classical games** with **LLM-based agents** (plus simple baselines).  
+Built as the codebase for a diploma/thesis investigating:
 
-It supports two interaction modes:
+> **How does a limited communication budget *K* (number of pre-play dialogue rounds) affect agreement, equilibrium outcomes, and welfare in classical games — and does structured "workflow prompting" improve these outcomes?**
 
-- `no_workflow`: free-form negotiation / messages (baseline)
-- `workflow`: structured “workflow prompting” that nudges agents through phases like analysis → propose → counter → accept
-
-Ukrainian translation: see [`README_UA.md`](README_UA.md).
+Ukrainian translation: [`README_UA.md`](README_UA.md)
 
 ---
 
-## Contents
+## Table of Contents
 
-- [Supported games](#supported-games)
-- [Key concepts and metrics](#key-concepts-and-metrics)
+- [Motivation & Research Question](#motivation--research-question)
+- [Architecture Overview](#architecture-overview)
+- [Supported Games](#supported-games)
+- [Agent Types](#agent-types)
+- [Key Concepts & Metrics](#key-concepts--metrics)
 - [Installation](#installation)
-- [LLM backends (configuration)](#llm-backends-configuration)
-- [Running experiments](#running-experiments)
-  - [Communication sweep over K (recommended)](#communication-sweep-over-k-recommended)
-  - [Scripts](#scripts)
-- [Outputs / artifacts](#outputs--artifacts)
-  - [Run directory layout](#run-directory-layout)
-  - [Episode logs (JSONL)](#episode-logs-jsonl)
-  - [Aggregated metrics (CSV)](#aggregated-metrics-csv)
-  - [Plots](#plots)
-- [Project structure](#project-structure)
+- [LLM Backends](#llm-backends)
+- [Running Experiments](#running-experiments)
+- [Output Artifacts](#output-artifacts)
+- [Project Structure](#project-structure)
 - [Testing](#testing)
-- [Reproducibility notes](#reproducibility-notes)
+- [Known Issues & Design Decisions](#known-issues--design-decisions)
+- [Reproducibility](#reproducibility)
 - [Troubleshooting](#troubleshooting)
 
 ---
 
-## Supported games
+## Motivation & Research Question
 
-Implemented in `src/llmgt/games/`:
+Classical game theory assumes perfectly rational agents.  Modern LLMs can be cast as
+bounded-rational players that *communicate* before committing to actions.  This project
+studies how:
 
-- **Prisoner’s Dilemma** (`pd`)
-- **Stag Hunt** (`stag`)
-- **Battle of the Sexes** (`bos`)
-- **Ultimatum Game** (`ultimatum`)
+1. **Communication budget `K`** (0 = no talk, 1..6 = rounds of dialogue before action) affects whether agents reach agreements, Nash equilibria, Pareto optima, and higher joint welfare.
+2. **Workflow prompting** (structured reasoning: dominant strategies → best responses → Nash → Pareto → decision) compares against free-form negotiation.
+3. Different **LLM backends** (heuristic baseline, Ollama local models, HuggingFace Transformers, OpenAI API) behave under the same protocol.
 
-Each game provides:
-
-- action sets: `actions_for(player)`
-- payoff function: `payoff(action_a, action_b)`
-- theoretical solution sets where applicable:
-  - `nash_equilibria()`
-  - `pareto_optima()`
+The simulator runs hundreds of episodes per configuration, logs full dialogues, and computes
+publication-ready aggregate metrics with standard deviations.
 
 ---
 
-## Key concepts and metrics
+## Architecture Overview
+
+```
+┌─────────────┐     ┌──────────────┐     ┌─────────────────┐
+│  Game        │     │  Agent A     │     │  Agent B         │
+│  (payoffs,   │◄────│  (send_msg,  │────►│  (send_msg,      │
+│   Nash,      │     │   act)       │     │   act)           │
+│   Pareto)    │     └──────┬───────┘     └──────┬───────────┘
+└──────┬───────┘            │                    │
+       │           ┌───────▼────────────────────▼──────────┐
+       │           │         Simulation Runner              │
+       │           │  • communication loop (K rounds)       │
+       └──────────►│  • action collection                   │
+                   │  • payoff computation                  │
+                   │  • theory-hit / agreement detection    │
+                   └───────────────┬────────────────────────┘
+                                   │
+                   ┌───────────────▼────────────────────────┐
+                   │         Logging & Metrics               │
+                   │  • JSONL episode records                │
+                   │  • per-K aggregation (CSV)             │
+                   │  • plots (PNG)                         │
+                   └────────────────────────────────────────┘
+```
+
+---
+
+## Supported Games
+
+Implemented in `src/llmgt/games/`:
+
+| Game | Actions | Nash Equilibria | Pareto Optima | Key Tension |
+|------|---------|-----------------|---------------|-------------|
+| **Prisoner's Dilemma** (`pd`) | C, D | (D,D) | (C,C) | Individual vs. collective rationality |
+| **Stag Hunt** (`stag`) | S, H | (S,S), (H,H) | (S,S) | Risk dominance vs. payoff dominance |
+| **Battle of the Sexes** (`bos`) | O, F | (O,O), (F,F) | (O,O), (F,F) | Coordination with conflicting preferences |
+| **Ultimatum Game** (`ultimatum`) | Proposer: L,F / Responder: A,R | (L,A) | (F,A) | Fairness vs. subgame-perfect equilibrium |
+
+Each game class provides:
+- `actions_for(role)` — role-specific action sets (important for asymmetric games like Ultimatum)
+- `payoff(action_a, action_b)` → `(float, float)`
+- `nash_equilibria()` → `set[tuple[str, str]]`
+- `pareto_optima()` → `set[tuple[str, str]]`
+
+---
+
+## Agent Types
+
+### Baseline Agents (no LLM)
+
+| Agent | Description |
+|-------|-------------|
+| `FixedActionAgent` | Always plays a fixed action. No communication. |
+| `EchoAgent` | Echoes last received message. Fixed final action. |
+| `WorkflowProposerAgent` | Deterministic PROPOSE/ACCEPT protocol agent. |
+| `WorkflowResponderAgent` | Accepts or counters based on payoff threshold. |
+| `StochasticWorkflowResponderAgent` | Acceptance probability increases with round number. |
+
+### LLM Agents
+
+| Agent | Description |
+|-------|-------------|
+| `LLMAgent` | Free-form negotiation with minimal game-theory guidance. |
+| `StrategicLLMAgent` | Payoff-table–aware prompts with structured protocol (PROPOSE/COUNTER/ACCEPT). |
+| `WorkflowStrategicLLMAgent` | Full game-theoretic workflow reasoning (dominant strategies → best responses → Nash → Pareto → decision). Configurable depth via `workflow_level` (1–3). |
+
+### Negotiation Protocol
+
+All communicative agents follow the **PROPOSE / COUNTER / ACCEPT** protocol:
+
+```
+Round 1: Agent A → PROPOSE: (X,Y)     # X = A's action, Y = B's action
+         Agent B → ACCEPT: (X,Y)       # or COUNTER: (X',Y')
+Round 2: Agent A → PROPOSE: (X',Y')   # re-proposes
+         Agent B → ACCEPT: (X',Y')     # final agreement
+```
+
+When `ACCEPT` is detected in workflow mode, communication stops early.
+
+---
+
+## Key Concepts & Metrics
 
 ### Episode
-One simulation run of a game between **agent A** and **agent B**:
+One simulation run: optional communication (up to *K* rounds) → actions → payoffs → metrics.
 
-1. optional communication phase (up to `K` rounds)
-2. each agent picks an action (`ACTION: ...`)
-3. payoffs are computed
-4. theory / agreement metrics are computed and logged
+### Communication Budget `K`
+Maximum chat rounds before choosing actions.  The sweep experiment varies *K* from 0 to 6 to study how more communication affects outcomes.
 
-### Communication rounds `K`
-`K` is the **maximum** number of chat rounds allowed *before* choosing actions.
+### Metrics (per episode)
 
-In aggregated CSV outputs the communication budget is stored in column **`k`**.
-The simulator also records:
+| Metric | Description |
+|--------|-------------|
+| `agreement_hit` | Did agents' final actions match what they agreed on during communication? |
+| `rounds_to_agreement` | First round where agreement appeared |
+| `nash_hit` | Did the outcome match a Nash equilibrium? |
+| `pareto_hit` | Did the outcome match a Pareto optimum? |
+| `theory_hit` | Combined success: Pareto-Nash if it exists, else Nash |
+| `rounds_to_theory_hit` | First round where the theory-target outcome was agreed upon |
+| `welfare` | Sum of payoffs: `payoff_a + payoff_b` |
+| `winner` | Which agent got a higher payoff (or tie) |
 
-- `used_comm_rounds` — how many rounds were actually used
-- in workflow mode, it may stop early when an `ACCEPT` is detected
+### Aggregated Metrics (per K)
 
-### Agreement
-“Agreement” is computed from the dialogue + final actions. It is logged as:
+The `summarize_by_k()` function computes means, standard deviations, and rates across all episodes for each *K* value.  Key columns in `summary_by_k.csv`:
 
-- `agreement_hit: bool | None`
-- `rounds_to_agreement: int | None`
-
-### Theory hits
-For each final action pair, the simulator computes:
-
-- `nash_hit`
-- `pareto_hit`
-- `pareto_nash_hit`
-- `theory_hit` (overall success indicator)
-- `rounds_to_theory_hit`
-
-### Welfare
-From payoffs:
-
-- `welfare = payoff_a + payoff_b`
-- summary also includes `payoff_mean` and `payoff_diff_mean`
+- **Rates**: `agreement_rate`, `nash_rate`, `pareto_rate`, `theory_rate`
+- **Rounds**: `mean_rounds_to_agreement`, `mean_rounds_to_theory_hit`  
+- **Payoffs**: `welfare_mean`, `payoff_mean`, `payoff_diff_mean`
+- **Communication**: `used_comm_rounds_mean`, `wasted_comm_rounds_mean`
+- **Protocol**: `propose_rate`, `counter_rate`, `accept_rate`, `follow_accept_rate`
+- **Game-theoretic**: `regret_a_mean`, `regret_b_mean`, `welfare_gap_mean`
+- All numeric metrics include `*_std` (standard deviation) columns for error bars.
 
 ---
 
 ## Installation
 
-Requirements:
-
-- Python **>= 3.10**
-
-Quickstart (editable install):
+**Requirements:** Python ≥ 3.10
 
 ```bash
+# Clone and install
+git clone <repo-url>
+cd llm-game-theory-agents
 python -m venv .venv
 source .venv/bin/activate
 pip install -e .
-```
 
-Optional extras from `pyproject.toml`:
+# Optional: plotting
+pip install matplotlib
 
-- HuggingFace / Transformers backend:
-
-```bash
+# Optional: HuggingFace backend (GPU recommended)
 pip install -e ".[hf]"
-```
 
-- Ollama backend (HTTP client):
-
-```bash
+# Optional: Ollama backend
 pip install -e ".[ollama]"
 ```
 
-Plotting (optional):
+---
 
-```bash
-pip install matplotlib
-```
+## LLM Backends
+
+| Backend | Flag | Requires | Use Case |
+|---------|------|----------|----------|
+| `heuristic` | `--backend heuristic` | Nothing | Fast smoke tests, deterministic baseline |
+| `ollama` | `--backend ollama` | Local Ollama server | Local open-source models (Llama, Mistral) |
+| `hf` | `--backend hf` | `torch`, `transformers` | Direct HuggingFace inference (GPU recommended) |
+| `openai` | `--backend openai` | `openai` package + API key | OpenAI API models |
+
+### Configuration
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `--temperature` | 0.7 | Sampling temperature |
+| `--max-output-tokens` | 64 | Max tokens per LLM response |
+| `--agent-style` | `strategic` | `basic` or `strategic` |
+| `--workflow-level` | 2 | Workflow depth: 1=light, 2=standard, 3=strict |
+
+Backend-specific options: see `llmgt sweep --help`.
 
 ---
 
-## LLM backends (configuration)
+## Running Experiments
 
-The CLI supports these backends:
-
-- `heuristic` — deterministic baseline (no external APIs)
-- `openai` — OpenAI Responses API
-- `ollama` — local Ollama server via HTTP
-- `hf` — local HuggingFace Transformers inference
-
-Common knobs:
-
-- `--temperature`
-- `--max-output-tokens`
-
-### OpenAI
-
-- Choose a model with `--openai-model` (default: `gpt-4o-mini`)
-- Optional `--base-url` for compatible gateways / proxies
-- Authentication: typically via environment variables used by the OpenAI SDK (commonly `OPENAI_API_KEY`)
-
-### Ollama
-
-- `--ollama-model` (default: `llama3.1:8b`)
-- `--ollama-host` (default: `http://localhost:11434`)
-- `--ollama-timeout-s` (default: `120`)
-
-### HuggingFace Transformers
-
-- `--hf-model` (default: `mistralai/Mistral-7B-Instruct-v0.2`)
-- `--hf-max-new-tokens` (default: `128`)
-
-Note: large models may require a GPU and substantial RAM/VRAM.
-
----
-
-## Running experiments
-
-This project exposes a CLI entrypoint:
-
-- `llmgt` → `src/llmgt/cli.py`
-
-### Communication sweep over K (recommended)
-
-This is the main experiment driver for the diploma-style evaluation.
-It runs `n_runs` episodes for each `K` and writes:
-
-- `logs/episodes.jsonl` (raw episode logs)
-- `summary_by_k.csv` (aggregated metrics)
-- `figures/*.png` (optional plots)
-
-Heuristic smoke test (fast):
+### CLI: Communication Sweep (main experiment)
 
 ```bash
-llmgt sweep --game pd --mode workflow --backend heuristic --k 0..6 --n-runs 50 --plots
-```
-
-Ollama example:
-
-```bash
-llmgt sweep --game stag --mode workflow --backend ollama \
-  --ollama-model llama3.1:8b --ollama-host http://localhost:11434 \
-  --k 0..6 --n-runs 200 --plots
-```
-
-OpenAI example:
-
-```bash
-llmgt sweep --game bos --mode no_workflow --backend openai \
-  --openai-model gpt-4o-mini --temperature 0.7 --max-output-tokens 64 \
-  --k 0..6 --n-runs 200 --plots
-```
-
-HuggingFace example:
-
-```bash
-llmgt sweep --game ultimatum --mode workflow --backend hf \
-  --hf-model mistralai/Mistral-7B-Instruct-v0.2 --hf-max-new-tokens 128 \
+# Fast smoke test (heuristic, ~1 second)
+llmgt sweep --game pd --mode workflow --backend heuristic \
   --k 0..6 --n-runs 50 --plots
+
+# Ollama with local Llama 3.1
+llmgt sweep --game stag --mode workflow --backend ollama \
+  --ollama-model llama3.1:8b --k 0..6 --n-runs 200 --plots
+
+# HuggingFace Transformers
+llmgt sweep --game bos --mode workflow --backend hf \
+  --hf-model mistralai/Mistral-7B-Instruct-v0.2 --k 0..6 --n-runs 50 --plots
+
+# OpenAI API
+llmgt sweep --game ultimatum --mode no_workflow --backend openai \
+  --openai-model gpt-4o-mini --k 0..6 --n-runs 200 --plots
 ```
-
-#### CLI parameters (`llmgt sweep`)
-
-Core:
-
-- `--game`: `pd | stag | bos | ultimatum`
-- `--mode`: `workflow | no_workflow`
-- `--k`: either a range `0..6` or explicit list `--k 0 1 2 3`
-- `--n-runs`: episodes per K (default: `200`)
-- `--out-dir`: output base directory (default: `data/runs`)
-- `--tag`: a label appended to the run directory name
-- `--plots`: write PNG plots (requires `matplotlib`)
-
-Agent behavior:
-
-- `--agent-style`: `basic | strategic`
-- `--workflow-level`: `1 | 2 | 3` (workflow mode only)
-
-Backend-specific:
-
-- HF: `--hf-model`, `--hf-max-new-tokens`
-- Ollama: `--ollama-model`, `--ollama-host`, `--ollama-timeout-s`
-- OpenAI: `--openai-model`, `--base-url`
 
 ### Scripts
 
-The `scripts/` directory contains convenience runners used for quick experiments and thesis runs, e.g.:
+The `scripts/` directory contains pre-configured experiment runners:
 
-- `scripts/run_comm_experiment.py`
-- `scripts/run_llm_sweep_all.py`
-- `scripts/run_workflow_sweep_all.py`
-- `scripts/run_pd.py`, `scripts/run_pd_workflow.py`, `scripts/run_pd_llm.py`
-- `scripts/run_thesis.py`
-
-Typical usage:
+| Script | Description |
+|--------|-------------|
+| `run_pd.py` | Fixed-action PD baseline |
+| `run_pd_llm.py` | LLM agents on PD (heuristic backend) |
+| `run_pd_workflow.py` | Stochastic workflow agents, PD sweep |
+| `run_comm_experiment.py` | Fixed-agent communication sweep |
+| `run_workflow_sweep_all.py` | Rule-based workflow sweep across all 4 games |
+| `run_llm_sweep_all.py` | LLM sweep across all 4 games (configurable backend via env vars) |
+| `run_thesis.py` | Full thesis pipeline: all models × all games × all modes → plots |
 
 ```bash
-python scripts/run_comm_experiment.py
+# Example: full thesis run with TinyLlama
+LLMGT_N_RUNS=50 python scripts/run_thesis.py
 ```
 
 ---
 
-## Outputs / artifacts
+## Output Artifacts
 
-### Run directory layout
+### Run Directory Layout
 
-Each run creates a new directory under `data/runs/` (or `--out-dir`).
-The directory name is timestamped like:
+```
+data/runs/20260223_082328Z_9f29a20_workflow_sweep_all/
+├── run_meta.json              # Configuration snapshot
+├── prisoners_dilemma/
+│   ├── logs/
+│   │   └── episodes.jsonl     # Raw episode records
+│   ├── summary_by_k.csv       # Aggregated metrics
+│   └── figures/
+│       ├── agreement_rate.png
+│       ├── mean_rounds_to_agreement.png
+│       ├── welfare_mean.png
+│       ├── theory_rate.png
+│       └── mean_rounds_to_theory_hit.png
+├── stag_hunt/
+│   └── ...
+├── battle_of_sexes/
+│   └── ...
+└── ultimatum/
+    └── ...
+```
 
-- `YYYYMMDD_HHMMSSZ_<salt>_<tag>`
+### Episode Logs (JSONL)
 
-Standard subfolders:
+Each line is a serialized `EpisodeRecord`:
 
-- `logs/`
-- `figures/`
-
-### Episode logs (JSONL)
-
-Path:
-
-- `.../logs/episodes.jsonl`
-
-Each line is a serialized `EpisodeRecord` (see `src/llmgt/logging/records.py`).
-Important fields:
-
-- identifiers: `episode_id`, `game`, `mode`
-- communication: `max_comm_rounds`, `used_comm_rounds`
-- models: `model_a`, `model_b`
-- conversation: `messages[]` with `{role, content, ts_utc}`
-- outcomes: `action_a`, `action_b`, `payoff_a`, `payoff_b`, `winner`
-- theory hits: `nash_hit`, `pareto_hit`, `pareto_nash_hit`, `theory_hit`, `rounds_to_theory_hit`
-- agreement: `agreement_hit`, `rounds_to_agreement`
-- misc: `extra` (e.g., workflow can store an `accepted_pair`)
-- timing: `started_at_utc`, `finished_at_utc`
-
-### Aggregated metrics (CSV)
-
-Path:
-
-- `.../summary_by_k.csv`
-
-Produced by `summarize_by_k()` (`src/llmgt/experiments/sweep.py`).
-Columns include (not exhaustive):
-
-- `k`, `n_runs`, `game`
-- rates: `agreement_rate`, `nash_rate`, `pareto_rate`, `pareto_nash_rate`, `theory_rate`
-- rounds: `mean_rounds_to_agreement`, `mean_rounds_to_theory_hit`
-- communication usage: `used_comm_rounds_mean`, `used_comm_rounds_p50`, `used_comm_rounds_over_k_mean`, `wasted_comm_rounds_mean`
-- payoffs: `payoff_mean`, `welfare_mean`, `payoff_diff_mean`
-- winners: `a_win_rate`, `b_win_rate`, `tie_rate`
-- text stats: `msg_count_mean`, `words_total_mean`, `words_a_mean`, `words_b_mean`
-- intent markers: `propose_rate`, `counter_rate`, `accept_rate`, `follow_accept_rate`
-- optional (if summarizer is given a game): `regret_a_mean`, `regret_b_mean`, `welfare_gap_mean`
-
-Uncertainty / variability:
-
-- For many numeric metrics, `summarize_by_k()` also outputs `*_std` columns (sample standard deviation).
-  These are useful for error bars and reporting variance across runs.
+```json
+{
+  "episode_id": "pd-K3-run42",
+  "game": "prisoners_dilemma",
+  "mode": "workflow",
+  "max_comm_rounds": 3,
+  "used_comm_rounds": 2,
+  "messages": [
+    {"role": "system", "content": "Episode started..."},
+    {"role": "agent_a", "content": "PROPOSE: (C,C)"},
+    {"role": "agent_b", "content": "ACCEPT: (C,C)"},
+    {"role": "agent_a", "content": "ACTION: C"},
+    {"role": "agent_b", "content": "ACTION: C"}
+  ],
+  "action_a": "C", "action_b": "C",
+  "payoff_a": 3.0, "payoff_b": 3.0,
+  "nash_hit": false, "pareto_hit": true,
+  "theory_hit": false,
+  "agreement_hit": true,
+  "rounds_to_agreement": 1
+}
+```
 
 ### Plots
 
-If `--plots` is enabled, the CLI writes:
+Generated with `--plots` flag.  Plots show metric values vs. *K* with optional error bars (from `*_std` columns):
 
-- `figures/agreement_rate.png`
-- `figures/mean_rounds_to_agreement.png`
-- `figures/welfare_mean.png`
-- `figures/theory_rate.png`
-- `figures/mean_rounds_to_theory_hit.png`
-
-Plotting is implemented in `src/llmgt/experiments/plotting.py`. If `matplotlib` is missing, plotting is skipped gracefully.
+- `agreement_rate.png` — fraction of episodes where agents agreed
+- `welfare_mean.png` — mean joint payoff
+- `theory_rate.png` — fraction matching theoretical solution concept
+- `mean_rounds_to_agreement.png` — how quickly agents agree
+- `mean_rounds_to_theory_hit.png` — rounds until theory-target agreement
 
 ---
 
-## Project structure
+## Project Structure
 
-High-level map:
+```
+src/llmgt/
+├── __init__.py                    # Package root
+├── cli.py                         # CLI entrypoint (llmgt sweep)
+│
+├── games/                         # Game definitions
+│   ├── base.py                    # Abstract Game base class
+│   ├── prisoners_dilemma.py       # Prisoner's Dilemma
+│   ├── stag_hunt.py               # Stag Hunt
+│   ├── battle_of_sexes.py         # Battle of the Sexes
+│   └── ultimatum.py               # Ultimatum Game
+│
+├── agents/                        # Agent implementations
+│   ├── parsing.py                 # ★ Shared parsing utilities (refactored)
+│   ├── simple.py                  # FixedActionAgent, EchoAgent
+│   ├── workflow.py                # Rule-based workflow agents
+│   ├── llm.py                     # Basic LLM agent
+│   ├── strategic.py               # Strategic LLM agent (payoff-aware)
+│   └── workflow_reasoner.py       # Workflow + game-theory reasoning agent
+│
+├── llm/                           # LLM backend clients
+│   ├── client.py                  # LLMClient protocol + ScriptedLLMClient
+│   ├── heuristic.py               # Deterministic heuristic baseline
+│   ├── openai_client.py           # OpenAI Responses API
+│   ├── ollama_client.py           # Ollama HTTP API
+│   └── hf_client.py               # HuggingFace Transformers
+│
+├── sim/                           # Simulation engine
+│   ├── runner.py                  # Episode runner & experiment driver
+│   ├── agreement.py               # Agreement detection
+│   ├── theory.py                  # Nash/Pareto hit computation
+│   ├── rounds.py                  # ★ Rounds-to-agreement/theory (bug fixed)
+│   ├── workflow.py                # PROPOSE/COUNTER/ACCEPT extraction
+│   ├── run_dir.py                 # Timestamped output directories
+│   └── utils.py                   # Episode ID generation
+│
+├── experiments/                   # Experiment orchestration
+│   ├── sweep.py                   # Communication sweep + aggregation
+│   ├── plotting.py                # ★ Metric plots with error bars
+│   ├── agent_factories.py         # ★ LLM client/agent factories (refactored)
+│   └── game_configs.py            # Per-game workflow baselines
+│
+├── logging/                       # Data persistence
+│   ├── records.py                 # Pydantic models (EpisodeRecord, etc.)
+│   ├── jsonl_logger.py            # Append-mode JSONL writer
+│   └── run_meta.py                # Configuration snapshot writer
+│
+└── metrics/                       # Per-episode & aggregate metrics
+    └── __init__.py                # CommStats, regret, welfare gap
 
-- `src/llmgt/cli.py` — CLI (`llmgt sweep`)
-- `src/llmgt/games/` — game definitions and theoretical sets
-- `src/llmgt/agents/` — agents (`LLMAgent`, strategic variants, workflow variants)
-- `src/llmgt/llm/` — backend clients:
-  - `heuristic.py` (baseline)
-  - `openai_client.py`
-  - `ollama_client.py`
-  - `hf_client.py`
-- `src/llmgt/sim/` — episode runner + agreement/theory logic + run directory
-- `src/llmgt/experiments/` — sweeps, aggregation, plots, agent factories
-- `src/llmgt/logging/` — JSONL logger + Pydantic records
-- `scripts/` — convenience runners
-- `tests/` — test suite (pytest)
+scripts/                           # Convenience experiment runners
+tests/                             # pytest test suite (51 tests)
+```
+
+★ = refactored or bug-fixed in this revision.
 
 ---
 
 ## Testing
 
-Run all tests:
-
 ```bash
-pytest -q
+# Run all 51 tests
+pytest -v
+
+# Run a specific test file
+pytest tests/test_parsing.py -v
+
+# Run with coverage (if pytest-cov installed)
+pytest --cov=llmgt --cov-report=term-missing
 ```
+
+Test categories:
+- **Game logic**: payoffs, Nash/Pareto sets, role-specific actions
+- **Agreement detection**: workflow ACCEPT matching, no-workflow fallback
+- **Theory hits**: Nash/Pareto hit computation, rounds-to-theory-hit
+- **Parsing**: protocol line extraction, action parsing, pair sanitisation
+- **Agents**: LLM agent act/send_message, workflow agents, stochastic responder
+- **Sweep**: communication sweep, summarize_by_k, CSV output
+- **Plotting**: legacy/new column names, PNG generation
+- **Logging**: Pydantic serialisation, JSONL output
 
 ---
 
-## Reproducibility notes
+## Known Issues & Design Decisions
 
-For stable diploma results:
+### Fixed in This Revision
 
-- Keep `K` (communication budget), `n_runs`, `mode`, and backend configs fixed when comparing conditions.
-- Record model identifiers and sampling parameters: `--temperature`, `--max-output-tokens`.
-- Store raw episode logs (`episodes.jsonl`) — they contain the full dialogue + final actions.
-- Prefer running multiple independent runs and reporting confidence intervals (LLM sampling variance).
+1. **`compute_rounds_to_theory_hit` bug** — Previously always returned round 1 for any theory hit because `upto is not None` is always True for a non-empty list slice. Now properly scans conversation prefixes for agreement markers.
+
+2. **Code duplication** — `_format_history`, `_extract_accepted_pair`, `_parse_action`, regex patterns were duplicated across `llm.py`, `strategic.py`, and `workflow_reasoner.py`. Extracted to `agents/parsing.py`.
+
+3. **Missing error bars** — `plot_metric_by_k` now automatically uses `*_std` columns for error bars when available.
+
+4. **Factory duplication** — `_make_clients` in `agent_factories.py` had identical client-construction blocks repeated. Refactored to a single `_make_client()` function.
+
+### Design Notes
+
+- **Heuristic backend**: always proposes cooperative/Pareto outcomes — this is intentional as a deterministic "best-case" baseline.
+- **Theory target set**: if a Pareto-optimal Nash equilibrium exists, that is the target; otherwise the Nash set is used. This follows the paper's methodology.
+- **Stochastic workflow responder**: acceptance probability `p(r) = min(1, base_p + (r-1) × step_p)` — models escalating willingness to agree.
+
+---
+
+## Reproducibility
+
+For stable thesis results:
+
+1. **Fix all parameters** when comparing conditions: `K`, `n_runs`, `mode`, backend, `temperature`, `max_output_tokens`.
+2. **Record model identifiers** in `run_meta.json` (done automatically).
+3. **Store raw logs** (`episodes.jsonl`) — they contain full dialogues + final actions.
+4. **Run multiple independent seeds** and report confidence intervals (LLM sampling has inherent variance).
+5. **Use `summary_by_k.csv`** `*_std` columns for error bars in plots.
 
 ---
 
 ## Troubleshooting
 
-- **No plots / “Plotting skipped”** → install `matplotlib`.
-- **Ollama connection/timeouts** → ensure the server is running and `--ollama-host` is correct.
-- **HF out-of-memory** → use a smaller model, reduce `--hf-max-new-tokens`, or run on CPU.
-- **OpenAI auth errors** → ensure the required API key env var is set (commonly `OPENAI_API_KEY`).
+| Problem | Solution |
+|---------|----------|
+| No plots / "Plotting skipped" | `pip install matplotlib` |
+| Ollama connection timeout | Ensure server is running: `ollama serve`; check `--ollama-host` |
+| HuggingFace out-of-memory | Use smaller model, reduce `--hf-max-new-tokens`, or use CPU |
+| OpenAI auth error | Set `OPENAI_API_KEY` environment variable |
+| Flat/constant plots | Check that agents actually communicate (use `--backend heuristic` to verify); increase `--n-runs` for statistical significance |
+| `theory_rate` always 0 or 1 | Expected for deterministic backends; LLM backends show variance |
+
+---
+
+*Built for a diploma/thesis on LLM-based game-theoretic negotiation.*
