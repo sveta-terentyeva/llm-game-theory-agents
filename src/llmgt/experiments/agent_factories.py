@@ -16,7 +16,7 @@ from llmgt.games.base import Game
 from llmgt.llm.heuristic import HeuristicLLMClient
 
 
-Backend = Literal["heuristic", "openai", "ollama", "hf"]
+Backend = Literal["heuristic", "openai", "ollama", "hf", "openrouter"]
 Mode = Literal["no_workflow", "workflow"]
 
 # Type alias — any agent that exposes ``send_message`` + ``act``
@@ -45,6 +45,10 @@ class LLMBackendConfig:
     # HuggingFace (Transformers)
     hf_model: str = "mistralai/Mistral-7B-Instruct-v0.2"
     hf_max_new_tokens: int = 128
+
+    # OpenRouter (access to OpenAI, Claude, Gemini, etc.)
+    openrouter_model: str = "google/gemini-2.0-flash-001"
+    openrouter_api_key: Optional[str] = None
 
     # Agent behaviour
     agent_style: Literal["basic", "strategic"] = "strategic"
@@ -89,6 +93,16 @@ def _make_client(cfg: LLMBackendConfig) -> Any:
             model_id=cfg.hf_model,
             max_new_tokens=cfg.hf_max_new_tokens,
             temperature_default=cfg.temperature,
+        )
+
+    if cfg.backend == "openrouter":
+        from llmgt.llm.openrouter_client import OpenRouterClient
+
+        return OpenRouterClient(
+            model=cfg.openrouter_model,
+            api_key=cfg.openrouter_api_key,
+            temperature_default=cfg.temperature,
+            max_tokens=cfg.max_output_tokens,
         )
 
     raise ValueError(f"Unknown backend: {cfg.backend}")

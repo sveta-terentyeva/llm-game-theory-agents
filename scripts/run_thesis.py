@@ -5,6 +5,9 @@ from pathlib import Path
 from datetime import datetime, timezone
 from typing import Dict, List
 
+from dotenv import load_dotenv
+load_dotenv()  # reads .env for OPENROUTER_API_KEY, etc.
+
 import pandas as pd
 
 # Use non-interactive backend for reliability in headless runs
@@ -24,11 +27,19 @@ from llmgt.games.battle_of_sexes import BattleOfSexes
 from llmgt.games.ultimatum import UltimatumGame
 
 
-# Config
+# Config — OpenRouter model identifiers
 MODELS: Dict[str, str] = {
-    "tinyllama": "TinyLlama/TinyLlama-1.1B-Chat-v1.0",
-    # "phi2": "microsoft/phi-2",
-    # "mistral7b": "mistralai/Mistral-7B-Instruct-v0.2",
+    # --- OpenAI ---
+    "gpt-4o-mini":        "openai/gpt-4o-mini",
+    "gpt-4o":             "openai/gpt-4o",
+
+    # --- Claude ---
+    "claude-3.5-haiku":   "anthropic/claude-3.5-haiku",
+    "claude-3.5-sonnet":  "anthropic/claude-3.5-sonnet",
+
+    # --- Gemini ---
+    "gemini-2.0-flash":   "google/gemini-2.0-flash-001",
+    "gemini-2.0-pro":     "google/gemini-2.0-pro-001",
 }
 
 GAMES = {
@@ -41,18 +52,18 @@ GAMES = {
 MODES = ["no_workflow", "workflow"]
 
 # Env overrides:
-#   LLMGT_N_RUNS=50
-#   LLMGT_K_VALUES=0,1,2,3,4,5,6
+#   LLMGT_N_RUNS=100
+#   LLMGT_K_VALUES=0,1,2,3,4,5,6, 7,8,9
 #   LLMGT_TEMPERATURE=0.7
 #   LLMGT_MAX_NEW_TOKENS=64
 #   LLMGT_WORKFLOW_LEVEL=2
 #   LLMGT_AGENT_STYLE=strategic
-N_RUNS = int(os.getenv("LLMGT_N_RUNS", "50"))
-K_VALUES = [int(x.strip()) for x in os.getenv("LLMGT_K_VALUES", "0,1,2,3,4,5,6").split(",") if x.strip()]
+N_RUNS = int(os.getenv("LLMGT_N_RUNS", "100"))
+K_VALUES = [int(x.strip()) for x in os.getenv("LLMGT_K_VALUES", "0,1,2,3,4,5,6,7,8,9").split(",") if x.strip()]
 TEMPERATURE = float(os.getenv("LLMGT_TEMPERATURE", "0.7"))
 MAX_NEW_TOKENS = int(os.getenv("LLMGT_MAX_NEW_TOKENS", "64"))
 WORKFLOW_LEVEL = int(os.getenv("LLMGT_WORKFLOW_LEVEL", "2"))
-AGENT_STYLE = os.getenv("LLMGT_AGENT_STYLE", "strategic")
+AGENT_STYLE: str = os.getenv("LLMGT_AGENT_STYLE", "strategic")  # type: ignore[assignment]
 
 METRICS: List[str] = [
     "theory_rate",
@@ -184,15 +195,15 @@ def run_single_experiment(
     print(f"[run] model={model_name} mode={mode} game={game_name}")
 
     backend_cfg = LLMBackendConfig(
-        backend="hf",
-        hf_model=model_id,
-        hf_max_new_tokens=MAX_NEW_TOKENS,
+        backend="openrouter",
+        openrouter_model=model_id,
+        max_output_tokens=MAX_NEW_TOKENS,
         temperature=TEMPERATURE,
-        agent_style=AGENT_STYLE,
-        workflow_level=WORKFLOW_LEVEL
+        agent_style=AGENT_STYLE,  # type: ignore[arg-type]
+        workflow_level=WORKFLOW_LEVEL,
     )
 
-    agent_a, agent_b = make_agents_for_mode(game, backend_cfg, mode)
+    agent_a, agent_b = make_agents_for_mode(game, backend_cfg, mode)  # type: ignore[arg-type]
 
     out_dir = run_root / "raw" / model_name / mode / game_name
     logs_dir = out_dir / "logs"
@@ -307,9 +318,9 @@ def main() -> None:
             "modes": MODES,
             "k_values": K_VALUES,
             "n_runs": N_RUNS,
-            "backend": "hf",
+            "backend": "openrouter",
             "temperature": TEMPERATURE,
-            "hf_max_new_tokens": MAX_NEW_TOKENS,
+            "max_output_tokens": MAX_NEW_TOKENS,
             "workflow_level": WORKFLOW_LEVEL,
             "agent_style": AGENT_STYLE,
         },
