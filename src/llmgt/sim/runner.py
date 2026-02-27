@@ -67,8 +67,9 @@ def run_episode(
 
         used_rounds += 1
 
-
-        if mode == "workflow" and workflow_has_agreement(rec.messages):
+        # Early exit: both modes use PROPOSE/COUNTER/ACCEPT protocol,
+        # so stop communication as soon as an ACCEPT is detected.
+        if workflow_has_agreement(rec.messages):
             accepted_pair = extract_accepted_pair(rec.messages)
             break
 

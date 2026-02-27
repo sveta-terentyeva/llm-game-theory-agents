@@ -50,11 +50,14 @@ def agreement_hit(
     final_action_b: str,
     mode: str = "no_workflow",
 ) -> bool:
+    """Detect agreement — unified logic for both modes.
 
-    if mode == "workflow":
-        target = extract_accepted_pair(messages)
-        return target == (final_action_a, final_action_b)
-
+    An agreement is detected when a structured protocol marker
+    (ACCEPT > COUNTER > PROPOSE, in priority order) matches the
+    final actions.  Both ``workflow`` and ``no_workflow`` modes use
+    the same PROPOSE/COUNTER/ACCEPT negotiation protocol, so the
+    detection logic is identical.
+    """
     target = extract_accepted_pair(messages)
     if target is None:
         target = extract_last_counter(messages)

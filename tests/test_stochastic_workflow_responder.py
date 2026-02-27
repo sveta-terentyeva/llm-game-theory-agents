@@ -27,4 +27,6 @@ def test_stochastic_responder_accepts_with_high_prob_in_late_rounds():
     assert rec.agreement_hit is True
     assert rec.action_a == g.C
     assert rec.action_b == g.C
-    assert rec.rounds_to_agreement == 2
+    # Unified logic: PROPOSE: (C,C) at round 1 already matches the final
+    # outcome, so the earliest agreement detection is round 1.
+    assert rec.rounds_to_agreement == 1

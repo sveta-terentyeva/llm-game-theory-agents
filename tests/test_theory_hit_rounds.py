@@ -53,7 +53,8 @@ def test_theory_hit_with_accept_in_workflow():
 
 
 def test_theory_hit_with_delayed_accept():
-    """ACCEPT appears only in round 2."""
+    """COUNTER: (D,D) in round 1 already matches the final (D,D) outcome.
+    With unified agreement logic, this is detected at round 1."""
     g = PrisonersDilemma()
     msgs = [
         ChatMessage(role="agent_a", content="PROPOSE: (C,C)"),
@@ -69,7 +70,8 @@ def test_theory_hit_with_delayed_accept():
         final_action_b="D",
         max_comm_rounds=3,
     )
-    assert r == 2
+    # COUNTER: (D,D) at round 1 matches the final outcome
+    assert r == 1
 
 
 def test_theory_hit_no_agreement_in_chat_fallback():

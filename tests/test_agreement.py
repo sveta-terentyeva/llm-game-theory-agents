@@ -30,7 +30,25 @@ def test_agreement_workflow_requires_accept_and_follow_through():
     )
 
 
-def test_no_agreement_workflow_if_accept_missing():
+def test_agreement_via_propose_without_accept_if_actions_match():
+    """Unified logic: a PROPOSE fallback counts as agreement when final actions match."""
+    g = PrisonersDilemma()
+    msgs = [
+        ChatMessage(role="agent_a", content="PROPOSE: (C,C)"),
+        ChatMessage(role="agent_b", content="Sounds good"),
+    ]
+    # With unified logic PROPOSE is the fallback — and it matches (C,C)
+    assert agreement_hit(
+        game=g,
+        mode="workflow",
+        messages=msgs,
+        final_action_a="C",
+        final_action_b="C",
+    )
+
+
+def test_no_agreement_workflow_if_propose_mismatch():
+    """No agreement when PROPOSE pair doesn't match final actions."""
     g = PrisonersDilemma()
     msgs = [
         ChatMessage(role="agent_a", content="PROPOSE: (C,C)"),
@@ -40,8 +58,8 @@ def test_no_agreement_workflow_if_accept_missing():
         game=g,
         mode="workflow",
         messages=msgs,
-        final_action_a="C",
-        final_action_b="C",
+        final_action_a="D",
+        final_action_b="D",
     )
 
 
@@ -72,3 +90,45 @@ def test_no_agreement_random_no_workflow():
         final_action_a="C",
         final_action_b="D",
     )
+
+
+# --- Unified-mode parity tests ---
+
+
+def test_agreement_identical_across_modes_accept():
+    """Both modes detect agreement the same way when ACCEPT is present."""
+    g = PrisonersDilemma()
+    msgs = [
+        ChatMessage(role="agent_a", content="PROPOSE: (C,C)"),
+        ChatMessage(role="agent_b", content="ACCEPT: (C,C)"),
+    ]
+    for mode in ("no_workflow", "workflow"):
+        assert agreement_hit(
+            game=g, mode=mode, messages=msgs,
+            final_action_a="C", final_action_b="C",
+        ), f"failed for mode={mode}"
+
+
+def test_agreement_identical_across_modes_propose_fallback():
+    """Both modes use PROPOSE fallback identically."""
+    g = PrisonersDilemma()
+    msgs = [
+        ChatMessage(role="agent_a", content="PROPOSE: (C,C)"),
+        ChatMessage(role="agent_b", content="OK"),
+    ]
+    for mode in ("no_workflow", "workflow"):
+        assert agreement_hit(
+            game=g, mode=mode, messages=msgs,
+            final_action_a="C", final_action_b="C",
+        ), f"failed for mode={mode}"
+
+
+def test_no_agreement_identical_across_modes_empty():
+    """Both modes return False with no messages."""
+    g = PrisonersDilemma()
+    for mode in ("no_workflow", "workflow"):
+        assert not agreement_hit(
+            game=g, mode=mode, messages=[],
+            final_action_a="D", final_action_b="D",
+        ), f"failed for mode={mode}"
+
