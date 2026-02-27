@@ -3,12 +3,17 @@
 The ``run_comm_sweep`` function runs multiple episodes for each value of *k*
 (max communication rounds).  ``summarize_by_k`` computes aggregate metrics
 grouped by *k*, and ``write_csv`` persists the result.
+
+When ``max_workers > 1`` the episodes within each *k*-bucket are dispatched
+to a thread pool, which dramatically speeds up I/O-bound LLM API calls.
 """
 
 from __future__ import annotations
 
 import csv
+import os
 from collections import defaultdict
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import Iterable, Optional
 import math
@@ -23,6 +28,31 @@ from llmgt.metrics import (
     welfare_gap,
 )
 
+# Default parallelism — override with LLMGT_MAX_WORKERS env var.
+_DEFAULT_MAX_WORKERS = int(os.getenv("LLMGT_MAX_WORKERS", "8"))
+
+
+def _run_one_episode(
+    *,
+    game,
+    agent_a,
+    agent_b,
+    k: int,
+    run_idx: int,
+    mode: str,
+    logger: Optional[JsonlLogger],
+) -> EpisodeRecord:
+    """Helper executed in a worker thread."""
+    return run_episode(
+        episode_id=f"{game.name}-K{k}-run{run_idx}",
+        game=game,
+        agent_a=agent_a,
+        agent_b=agent_b,
+        max_comm_rounds=k,
+        mode=mode,
+        logger=logger,
+    )
+
 
 def run_comm_sweep(
     *,
@@ -33,21 +63,57 @@ def run_comm_sweep(
     n_runs: int,
     mode: str = "no_workflow",
     logger: Optional[JsonlLogger] = None,
+    max_workers: int = _DEFAULT_MAX_WORKERS,
 ) -> list[EpisodeRecord]:
-    """Run communication sweep over different K values."""
+    """Run communication sweep over different K values.
+
+    Parameters
+    ----------
+    max_workers : int
+        Number of parallel threads for episode execution.
+        Set to 1 for sequential (old) behaviour.  Default is read from
+        ``LLMGT_MAX_WORKERS`` env var (fallback: 8).
+    """
+    k_list = list(k_values)
     records: list[EpisodeRecord] = []
-    for k in k_values:
-        for i in range(n_runs):
-            rec = run_episode(
-                episode_id=f"{game.name}-K{k}-run{i}",
-                game=game,
-                agent_a=agent_a,
-                agent_b=agent_b,
-                max_comm_rounds=k,
-                mode=mode,
-                logger=logger,
-            )
-            records.append(rec)
+
+    if max_workers <= 1:
+        # Sequential fallback — identical to old behaviour
+        for k in k_list:
+            for i in range(n_runs):
+                rec = _run_one_episode(
+                    game=game, agent_a=agent_a, agent_b=agent_b,
+                    k=k, run_idx=i, mode=mode, logger=logger,
+                )
+                records.append(rec)
+        return records
+
+    # Parallel execution — episodes within each k-bucket run concurrently
+    total_episodes = len(k_list) * n_runs
+    done_count = 0
+
+    for k in k_list:
+        futures = []
+        with ThreadPoolExecutor(max_workers=max_workers) as pool:
+            for i in range(n_runs):
+                fut = pool.submit(
+                    _run_one_episode,
+                    game=game,
+                    agent_a=agent_a,
+                    agent_b=agent_b,
+                    k=k,
+                    run_idx=i,
+                    mode=mode,
+                    logger=logger,
+                )
+                futures.append(fut)
+
+            for fut in as_completed(futures):
+                records.append(fut.result())
+                done_count += 1
+                if done_count % max(1, max_workers) == 0 or done_count == total_episodes:
+                    print(f"  [{done_count}/{total_episodes}] episodes done (K={k})")
+
     return records
 
 
