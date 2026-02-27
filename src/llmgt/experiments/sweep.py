@@ -11,6 +11,7 @@ to a thread pool, which dramatically speeds up I/O-bound LLM API calls.
 from __future__ import annotations
 
 import csv
+import logging
 import os
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -30,6 +31,7 @@ from llmgt.metrics import (
 
 # Default parallelism — override with LLMGT_MAX_WORKERS env var.
 _DEFAULT_MAX_WORKERS = int(os.getenv("LLMGT_MAX_WORKERS", "8"))
+_log = logging.getLogger(__name__)
 
 
 def _run_one_episode(
@@ -109,8 +111,14 @@ def run_comm_sweep(
                 futures.append(fut)
 
             for fut in as_completed(futures):
-                records.append(fut.result())
                 done_count += 1
+                try:
+                    records.append(fut.result())
+                except Exception as exc:  # noqa: BLE001
+                    _log.error(
+                        "Episode failed (K=%d): %s: %s — skipping",
+                        k, type(exc).__name__, exc,
+                    )
                 if done_count % max(1, max_workers) == 0 or done_count == total_episodes:
                     print(f"  [{done_count}/{total_episodes}] episodes done (K={k})")
 
