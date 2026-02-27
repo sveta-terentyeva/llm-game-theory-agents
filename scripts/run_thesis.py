@@ -31,22 +31,22 @@ from llmgt.games.ultimatum import UltimatumGame
 MODELS: Dict[str, str] = {
     # --- OpenAI ---
     "gpt-4o-mini":        "openai/gpt-4o-mini",
-    "gpt-4o":             "openai/gpt-4o",
+    #"gpt-4o":             "openai/gpt-4o",
 
     # --- Claude ---
-    "claude-3.5-haiku":   "anthropic/claude-3.5-haiku",
-    "claude-3.5-sonnet":  "anthropic/claude-3.5-sonnet",
+    #"claude-3.5-haiku":   "anthropic/claude-3.5-haiku",
+    #"claude-3.5-sonnet":  "anthropic/claude-3.5-sonnet",
 
     # --- Gemini ---
-    "gemini-2.0-flash":   "google/gemini-2.0-flash-001",
-    "gemini-2.0-pro":     "google/gemini-2.0-pro-001",
+    #"gemini-2.0-flash":   "google/gemini-2.0-flash-001",
+    #"gemini-2.0-pro":     "google/gemini-2.0-pro-001",
 }
 
 GAMES = {
     "prisoners_dilemma": PrisonersDilemma(),
-    "stag_hunt": StagHunt(),
-    "battle_of_sexes": BattleOfSexes(),
-    "ultimatum": UltimatumGame(),
+    #"stag_hunt": StagHunt(),
+    #"battle_of_sexes": BattleOfSexes(),
+    #"ultimatum": UltimatumGame(),
 }
 
 MODES = ["no_workflow", "workflow"]
@@ -335,17 +335,26 @@ def main() -> None:
         print(run_root)
         return
 
+    failed: list[str] = []
     for model_name, model_id in MODELS.items():
         for mode in MODES:
             for game_name, game in GAMES.items():
-                run_single_experiment(
-                    run_root=run_root,
-                    model_name=model_name,
-                    model_id=model_id,
-                    mode=mode,
-                    game_name=game_name,
-                    game=game,
-                )
+                try:
+                    run_single_experiment(
+                        run_root=run_root,
+                        model_name=model_name,
+                        model_id=model_id,
+                        mode=mode,
+                        game_name=game_name,
+                        game=game,
+                    )
+                except Exception as exc:
+                    tag = f"{model_name}/{mode}/{game_name}"
+                    print(f"[ERROR] {tag} failed: {exc}")
+                    failed.append(tag)
+
+    if failed:
+        print(f"\n[WARN] {len(failed)} experiment(s) failed: {failed}")
 
     build_all_plots(run_root)
 
