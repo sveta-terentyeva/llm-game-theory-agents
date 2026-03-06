@@ -159,11 +159,13 @@ def summarize_by_k(records: list[EpisodeRecord], *, game=None) -> list[dict]:
     for k, recs in sorted(buckets.items()):
         n = len(recs) or 1
 
-        agreement_rate = sum(1 for r in recs if r.agreement_hit) / n
-        nash_rate = sum(1 for r in recs if r.nash_hit) / n
-        pareto_rate = sum(1 for r in recs if r.pareto_hit) / n
-        pareto_nash_rate = sum(1 for r in recs if r.pareto_nash_hit) / n
-        theory_rate = sum(1 for r in recs if r.theory_hit) / n
+        # Optional[bool] episode flags can be None if an episode partially failed.
+        # Treat None as False so aggregate rates are always numeric (never NaN).
+        agreement_rate = sum(1 for r in recs if r.agreement_hit is True) / n
+        nash_rate = sum(1 for r in recs if r.nash_hit is True) / n
+        pareto_rate = sum(1 for r in recs if r.pareto_hit is True) / n
+        pareto_nash_rate = sum(1 for r in recs if r.pareto_nash_hit is True) / n
+        theory_rate = sum(1 for r in recs if r.theory_hit is True) / n
 
         rounds = [float(r.rounds_to_agreement) for r in recs if r.rounds_to_agreement is not None]
         mean_rounds = _mean(rounds)
