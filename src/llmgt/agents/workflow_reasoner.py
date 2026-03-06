@@ -56,18 +56,17 @@ class WorkflowStrategicLLMAgent:
             "2) Compute best responses for each possible opponent action.\n"
             "3) Identify Nash equilibria (strategy profiles where both are best responses).\n"
             "4) Identify Pareto-optimal outcomes.\n"
-            "5) Decision rule:\n"
+            "5) Decision rule (choose a TARGET outcome (X,Y) to negotiate):\n"
             "   - If there exists a Nash equilibrium that is also Pareto-optimal, prefer it.\n"
-            "   - Else prefer a Pareto-optimal outcome that improves your payoff.\n"
-            "   - Else choose the outcome that maximizes your payoff while remaining plausible.\n"
+            "   - Else prefer a Pareto-optimal outcome.\n"
+            "   - Else choose the outcome that maximizes your payoff.\n"
         )
 
         if self.workflow_level >= 3:
             base += (
-                "\nStrict mode:\n"
-                "- Do not use vague language.\n"
-                "- If multiple equilibria exist, break ties by "
-                "(a) higher own payoff, then (b) higher joint payoff.\n"
+                "\nStrict mode tie-breaks (to be deterministic):\n"
+                "- If multiple candidate outcomes exist, break ties by: "
+                "(a) higher joint payoff (payoff_a+payoff_b), then (b) higher own payoff.\n"
             )
         return base
 
@@ -85,10 +84,12 @@ class WorkflowStrategicLLMAgent:
             f"Valid actions for agent_b: {allowed_b}\n\n"
             "Payoff table entries are (payoff_a, payoff_b):\n"
             f"{table}\n\n"
-            "IMPORTANT:\n"
+            "IMPORTANT OUTPUT CONSTRAINTS (must follow exactly):\n"
             "- Think through the workflow privately.\n"
             "- Do NOT reveal your reasoning.\n"
-            "- Output MUST be exactly ONE line in the protocol format. No extra words.\n\n"
+            "- Output MUST be exactly ONE line. No extra text, no explanation, no markdown.\n"
+            "- Use ONLY these uppercase labels: PROPOSE, COUNTER, ACCEPT.\n"
+            "- Use EXACT format with parentheses and comma: LABEL: (X,Y)\n\n"
             + self._workflow_instructions()
             + "\n\n"
             "Negotiation protocol:\n"
@@ -104,16 +105,34 @@ class WorkflowStrategicLLMAgent:
             user = (
                 f"Conversation so far:\n{history}\n\n"
                 "Output exactly one line: PROPOSE: (X,Y)\n"
+                "Choose one concrete outcome pair (X,Y) from the payoff table.\n"
             )
             if last_pair is None:
-                user += "No proposal yet. Propose a good outcome given the payoff table.\n"
+                user += (
+                    "No proposal yet. Start by proposing a TARGET outcome using the workflow decision rule.\n"
+                )
         else:
             user = (
                 f"Conversation so far:\n{history}\n\n"
-                "Output exactly one line: COUNTER: (X,Y) or ACCEPT: (X,Y)\n"
-                "If the last proposal is good for you according to the payoff table "
-                "and your workflow, ACCEPT it.\n"
-                "Otherwise COUNTER with a better outcome for you.\n"
+                "Output exactly one line: COUNTER: (X,Y) or ACCEPT: (X,Y)\n\n"
+                "Decision rule for ACCEPT vs COUNTER (be mechanical; do not explain):\n"
+                "- Let the last proposed pair be (X_last,Y_last). If none, treat as missing.\n"
+                "- Using the payoff table, compute:\n"
+                "    * The set NE = all Nash equilibria (pairs where each action is a best response).\n"
+                "    * The set PO = all Pareto-optimal pairs.\n\n"
+                "- Define an ACCEPTABLE set (what you are willing to accept immediately):\n"
+                "    1) If (NE ∩ PO) is non-empty, ACCEPTABLE = (NE ∩ PO).\n"
+                "    2) Else if PO is non-empty, ACCEPTABLE = PO.\n"
+                "    3) Else ACCEPTABLE = all pairs that maximize your payoff_b (argmax over payoff_b).\n\n"
+                "- Define a TARGET pair to counter with (what you propose if you do not accept):\n"
+                "    * Choose a pair from ACCEPTABLE (same set as above).\n"
+                "    * Tie-break deterministically among candidates by:\n"
+                "        (a) higher joint payoff (payoff_a+payoff_b), then (b) higher your payoff_b.\n\n"
+                "- If there IS a last proposal:\n"
+                "    * If (X_last,Y_last) is in ACCEPTABLE, output ACCEPT: (X_last,Y_last).\n"
+                "    * Otherwise output COUNTER: (X_target,Y_target) with your TARGET pair.\n"
+                "- If there is NO last proposal:\n"
+                "    * Output COUNTER: (X_target,Y_target) with your TARGET pair.\n"
             )
 
         reply = self.client.complete(
