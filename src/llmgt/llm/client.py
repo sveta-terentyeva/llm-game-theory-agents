@@ -3,13 +3,17 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Protocol, Sequence
+from typing import Any, Protocol, Sequence
 
 
 @dataclass(frozen=True)
 class LLMMessage:
     role: str
-    content: str
+    # Plain-text content (default)
+    content: str = ""
+    # Optional structured content blocks (OpenAI/Anthropic compatible).
+    # When provided, OpenRouter expects: [{"type":"text","text": "...", ...}, ...]
+    content_blocks: Sequence[dict[str, Any]] | None = None
 
 
 class LLMClient(Protocol):

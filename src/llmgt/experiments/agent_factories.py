@@ -14,7 +14,6 @@ from llmgt.agents.strategic import StrategicLLMAgent
 from llmgt.agents.workflow_reasoner import WorkflowStrategicLLMAgent
 from llmgt.games.base import Game
 from llmgt.llm.heuristic import HeuristicLLMClient
-from llmgt.llm.cache import CachedLLMClient, FileLLMCache, caching_enabled, default_cache_dir
 
 
 Backend = Literal["heuristic", "openai", "ollama", "hf", "openrouter"]
@@ -52,6 +51,12 @@ class LLMBackendConfig:
     openrouter_model: str = "meta-llama/llama-3.3-70b-instruct"
     openrouter_api_key: Optional[str] = None
 
+    # OpenRouter prompt caching (Anthropic/Claude via cache_control blocks)
+    openrouter_prompt_caching: bool = False
+    openrouter_prompt_cache_ttl: Optional[str] = None  # None/"5m"/"1h"
+    openrouter_cache_system_message: bool = True
+    openrouter_cache_first_user_message: bool = False
+
     # Agent behaviour
     agent_style: Literal["basic", "strategic"] = "strategic"
     workflow_level: int = 2  # only used in workflow mode
@@ -80,17 +85,13 @@ def _make_client(cfg: LLMBackendConfig) -> Any:
     if cfg.backend == "ollama":
         from llmgt.llm.ollama_client import OllamaChatClient
 
-        client = OllamaChatClient(
+        return OllamaChatClient(
             model=cfg.ollama_model,
             host=cfg.ollama_host,
             temperature_default=cfg.temperature,
             num_predict=cfg.max_output_tokens,
             timeout_s=cfg.ollama_timeout_s,
         )
-        if caching_enabled():
-            cache = FileLLMCache(default_cache_dir() / "ollama")
-            return CachedLLMClient(inner=client, cache=cache, model_id=f"ollama:{cfg.ollama_model}")
-        return client
 
     if cfg.backend == "hf":
         from llmgt.llm.hf_client import HuggingFaceChatClient
@@ -109,10 +110,11 @@ def _make_client(cfg: LLMBackendConfig) -> Any:
             api_key=cfg.openrouter_api_key,
             temperature_default=cfg.temperature,
             max_tokens=cfg.max_output_tokens,
+            prompt_caching=cfg.openrouter_prompt_caching,
+            prompt_cache_ttl=cfg.openrouter_prompt_cache_ttl,
+            cache_system_message=cfg.openrouter_cache_system_message,
+            cache_first_user_message=cfg.openrouter_cache_first_user_message,
         )
-        if caching_enabled():
-            cache = FileLLMCache(default_cache_dir() / "openrouter")
-            return CachedLLMClient(inner=client, cache=cache, model_id=f"openrouter:{cfg.openrouter_model}")
         return client
 
     raise ValueError(f"Unknown backend: {cfg.backend}")

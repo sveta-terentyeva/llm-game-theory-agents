@@ -71,6 +71,10 @@ def cmd_sweep(args: argparse.Namespace) -> int:
         # openrouter
         openrouter_model=getattr(args, "openrouter_model", LLMBackendConfig.openrouter_model),
         openrouter_api_key=getattr(args, "openrouter_api_key", None),
+        openrouter_prompt_caching=getattr(args, "openrouter_prompt_caching", False),
+        openrouter_prompt_cache_ttl=getattr(args, "openrouter_prompt_cache_ttl", None),
+        openrouter_cache_system_message=not bool(getattr(args, "openrouter_no_cache_system", False)),
+        openrouter_cache_first_user_message=bool(getattr(args, "openrouter_cache_first_user", False)),
         # agent behavior
         agent_style=args.agent_style,
         workflow_level=int(args.workflow_level),
@@ -170,6 +174,26 @@ def build_parser() -> argparse.ArgumentParser:
     # OpenRouter
     s.add_argument("--openrouter-model", default=LLMBackendConfig.openrouter_model)
     s.add_argument("--openrouter-api-key", default=None, help="If omitted, relies on OPENROUTER_API_KEY env var")
+    s.add_argument(
+        "--openrouter-prompt-caching",
+        action="store_true",
+        help="Enable OpenRouter prompt caching for Anthropic/Claude (adds cache_control blocks)",
+    )
+    s.add_argument(
+        "--openrouter-prompt-cache-ttl",
+        default=None,
+        help="Claude cache TTL: '5m' (default) or '1h'",
+    )
+    s.add_argument(
+        "--openrouter-no-cache-system",
+        action="store_true",
+        help="Disable caching the system message (advanced)",
+    )
+    s.add_argument(
+        "--openrouter-cache-first-user",
+        action="store_true",
+        help="Also cache the first user message (advanced; useful if it contains long static context)",
+    )
 
     s.add_argument(
         "--k",

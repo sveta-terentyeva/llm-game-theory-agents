@@ -8,9 +8,6 @@ from typing import Dict, List
 from dotenv import load_dotenv
 load_dotenv()  # reads .env for OPENROUTER_API_KEY, etc.
 
-# Enable LLM response caching by default for this script.
-# Precedence: shell env > .env > this default.
-os.environ.setdefault("LLMGT_LLM_CACHE", "1")
 
 import pandas as pd
 
@@ -46,10 +43,10 @@ MODELS: Dict[str, str] = {
 }
 
 GAMES = {
-    #"prisoners_dilemma": PrisonersDilemma(),
+    "prisoners_dilemma": PrisonersDilemma(),
     #"stag_hunt": StagHunt(),
     #"battle_of_sexes": BattleOfSexes(),
-    "ultimatum": UltimatumGame(),
+    #"ultimatum": UltimatumGame(),
 }
 
 MODES = ["no_workflow", "workflow"]
@@ -61,6 +58,11 @@ MODES = ["no_workflow", "workflow"]
 #   LLMGT_MAX_NEW_TOKENS=64
 #   LLMGT_WORKFLOW_LEVEL=2
 #   LLMGT_AGENT_STYLE=strategic
+# Prompt caching (Claude via OpenRouter):
+#   LLMGT_CLAUDE_PROMPT_CACHING=1        (default: 1 for anthropic/* models)
+#   LLMGT_CLAUDE_PROMPT_CACHE_TTL=1h     (default: 1h)
+#   LLMGT_CLAUDE_CACHE_SYSTEM=1          (default: 1)
+#   LLMGT_CLAUDE_CACHE_FIRST_USER=0      (default: 0)
 N_RUNS = int(os.getenv("LLMGT_N_RUNS", "100"))
 K_VALUES = [int(x.strip()) for x in os.getenv("LLMGT_K_VALUES", "0,1,2,3,4,5,6,7,8,9").split(",") if x.strip()]
 TEMPERATURE = float(os.getenv("LLMGT_TEMPERATURE", "0.7"))
@@ -343,6 +345,18 @@ def run_single_experiment(
 ) -> pd.DataFrame:
     print(f"[run] model={model_name} mode={mode} game={game_name}")
 
+    # Enable prompt caching only for Claude (Anthropic models on OpenRouter).
+    # This uses Anthropic-compatible per-block `cache_control` under the hood.
+    is_claude = model_id.strip().lower().startswith("anthropic/")
+    claude_prompt_caching = os.getenv("LLMGT_CLAUDE_PROMPT_CACHING")
+    enable_prompt_caching = (
+        (claude_prompt_caching is None and is_claude)
+        or (claude_prompt_caching == "1")
+    )
+    prompt_cache_ttl = os.getenv("LLMGT_CLAUDE_PROMPT_CACHE_TTL", "1h")
+    cache_system = os.getenv("LLMGT_CLAUDE_CACHE_SYSTEM", "1") == "1"
+    cache_first_user = os.getenv("LLMGT_CLAUDE_CACHE_FIRST_USER", "0") == "1"
+
     backend_cfg = LLMBackendConfig(
         backend="openrouter",
         openrouter_model=model_id,
@@ -350,6 +364,10 @@ def run_single_experiment(
         temperature=TEMPERATURE,
         agent_style=AGENT_STYLE,  # type: ignore[arg-type]
         workflow_level=WORKFLOW_LEVEL,
+        openrouter_prompt_caching=enable_prompt_caching,
+        openrouter_prompt_cache_ttl=prompt_cache_ttl if enable_prompt_caching else None,
+        openrouter_cache_system_message=cache_system,
+        openrouter_cache_first_user_message=cache_first_user,
     )
 
     agent_a, agent_b = make_agents_for_mode(game, backend_cfg, mode)  # type: ignore[arg-type]
