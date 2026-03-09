@@ -8,6 +8,10 @@ from typing import Dict, List
 from dotenv import load_dotenv
 load_dotenv()  # reads .env for OPENROUTER_API_KEY, etc.
 
+# Enable LLM response caching by default for this script.
+# Precedence: shell env > .env > this default.
+os.environ.setdefault("LLMGT_LLM_CACHE", "1")
+
 import pandas as pd
 
 # Use non-interactive backend for reliability in headless runs
@@ -22,28 +26,30 @@ from llmgt.logging.run_meta import write_run_meta
 from llmgt.sim.run_dir import make_run_dir
 
 from llmgt.games.prisoners_dilemma import PrisonersDilemma
+from llmgt.games.stag_hunt import StagHunt
+from llmgt.games.battle_of_sexes import BattleOfSexes
+from llmgt.games.ultimatum import UltimatumGame
 
 
 # Config — OpenRouter model identifiers
 MODELS: Dict[str, str] = {
     # --- OpenAI ---
-    "gpt-4o-mini":        "openai/gpt-4o-mini",
+     #"gpt-4o-mini":        "openai/gpt-4o-mini",
     #"gpt-4o":             "openai/gpt-4o",
 
     # --- Claude ---
     #"claude-3.5-haiku":   "anthropic/claude-3.5-haiku",
     #"claude-3.5-sonnet":  "anthropic/claude-3.5-sonnet",
 
-    # --- Gemini ---
-    #"gemini-2.0-flash":   "google/gemini-2.0-flash-001",
-    #"gemini-2.0-pro":     "google/gemini-2.0-pro-001",
+    # --- Free example (OpenRouter) ---
+    "llama-3.3":          "meta-llama/llama-3.3-70b-instruct",
 }
 
 GAMES = {
-    "prisoners_dilemma": PrisonersDilemma(),
+    #"prisoners_dilemma": PrisonersDilemma(),
     #"stag_hunt": StagHunt(),
     #"battle_of_sexes": BattleOfSexes(),
-    #"ultimatum": UltimatumGame(),
+    "ultimatum": UltimatumGame(),
 }
 
 MODES = ["no_workflow", "workflow"]

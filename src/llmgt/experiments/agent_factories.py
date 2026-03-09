@@ -14,6 +14,7 @@ from llmgt.agents.strategic import StrategicLLMAgent
 from llmgt.agents.workflow_reasoner import WorkflowStrategicLLMAgent
 from llmgt.games.base import Game
 from llmgt.llm.heuristic import HeuristicLLMClient
+from llmgt.llm.cache import CachedLLMClient, FileLLMCache, caching_enabled, default_cache_dir
 
 
 Backend = Literal["heuristic", "openai", "ollama", "hf", "openrouter"]
@@ -47,7 +48,8 @@ class LLMBackendConfig:
     hf_max_new_tokens: int = 128
 
     # OpenRouter (access to OpenAI, Claude, Gemini, etc.)
-    openrouter_model: str = "google/gemini-2.0-flash-001"
+    # Default to a widely-available free model so OpenRouter works out-of-the-box.
+    openrouter_model: str = "meta-llama/llama-3.3-70b-instruct"
     openrouter_api_key: Optional[str] = None
 
     # Agent behaviour
@@ -78,13 +80,17 @@ def _make_client(cfg: LLMBackendConfig) -> Any:
     if cfg.backend == "ollama":
         from llmgt.llm.ollama_client import OllamaChatClient
 
-        return OllamaChatClient(
+        client = OllamaChatClient(
             model=cfg.ollama_model,
             host=cfg.ollama_host,
             temperature_default=cfg.temperature,
             num_predict=cfg.max_output_tokens,
             timeout_s=cfg.ollama_timeout_s,
         )
+        if caching_enabled():
+            cache = FileLLMCache(default_cache_dir() / "ollama")
+            return CachedLLMClient(inner=client, cache=cache, model_id=f"ollama:{cfg.ollama_model}")
+        return client
 
     if cfg.backend == "hf":
         from llmgt.llm.hf_client import HuggingFaceChatClient
@@ -98,12 +104,16 @@ def _make_client(cfg: LLMBackendConfig) -> Any:
     if cfg.backend == "openrouter":
         from llmgt.llm.openrouter_client import OpenRouterClient
 
-        return OpenRouterClient(
+        client = OpenRouterClient(
             model=cfg.openrouter_model,
             api_key=cfg.openrouter_api_key,
             temperature_default=cfg.temperature,
             max_tokens=cfg.max_output_tokens,
         )
+        if caching_enabled():
+            cache = FileLLMCache(default_cache_dir() / "openrouter")
+            return CachedLLMClient(inner=client, cache=cache, model_id=f"openrouter:{cfg.openrouter_model}")
+        return client
 
     raise ValueError(f"Unknown backend: {cfg.backend}")
 

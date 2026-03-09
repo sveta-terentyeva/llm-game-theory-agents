@@ -68,6 +68,9 @@ def cmd_sweep(args: argparse.Namespace) -> int:
         # hf
         hf_model=args.hf_model,
         hf_max_new_tokens=int(args.hf_max_new_tokens),
+        # openrouter
+        openrouter_model=getattr(args, "openrouter_model", LLMBackendConfig.openrouter_model),
+        openrouter_api_key=getattr(args, "openrouter_api_key", None),
         # agent behavior
         agent_style=args.agent_style,
         workflow_level=int(args.workflow_level),
@@ -145,7 +148,7 @@ def build_parser() -> argparse.ArgumentParser:
     s = sub.add_parser("sweep", help="Run a communication sweep over K")
     s.add_argument("--game", required=True, help="pd | stag | bos | ultimatum")
     s.add_argument("--mode", default="workflow", help="workflow | no_workflow")
-    s.add_argument("--backend", default="heuristic", choices=["heuristic", "ollama", "hf", "openai"])
+    s.add_argument("--backend", default="heuristic", choices=["heuristic", "ollama", "hf", "openai", "openrouter"])
     s.add_argument("--agent-style", default="strategic", choices=["basic", "strategic"])
     s.add_argument("--workflow-level", type=int, default=2, help="1=light, 2=standard, 3=strict (workflow mode only)")
     s.add_argument("--temperature", type=float, default=0.7)
@@ -163,6 +166,10 @@ def build_parser() -> argparse.ArgumentParser:
     # OpenAI (optional; you can remove later for “open-source only”)
     s.add_argument("--openai-model", default="gpt-4o-mini")
     s.add_argument("--base-url", default=None)
+
+    # OpenRouter
+    s.add_argument("--openrouter-model", default=LLMBackendConfig.openrouter_model)
+    s.add_argument("--openrouter-api-key", default=None, help="If omitted, relies on OPENROUTER_API_KEY env var")
 
     s.add_argument(
         "--k",
