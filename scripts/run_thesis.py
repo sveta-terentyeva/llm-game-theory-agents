@@ -58,6 +58,11 @@ MODES = ["no_workflow", "workflow"]
 #   LLMGT_MAX_NEW_TOKENS=64
 #   LLMGT_WORKFLOW_LEVEL=2
 #   LLMGT_AGENT_STYLE=strategic
+# LLM backend selection for this script:
+#   LLMGT_BACKEND=openrouter|hf   (default: openrouter)
+# HuggingFace backend (Transformers):
+#   LLMGT_HF_MODEL=meta-llama/Llama-3.3-70B-Instruct
+#   LLMGT_HF_MAX_NEW_TOKENS=64
 # Prompt caching (Claude via OpenRouter):
 #   LLMGT_CLAUDE_PROMPT_CACHING=1        (default: 1 for anthropic/* models)
 #   LLMGT_CLAUDE_PROMPT_CACHE_TTL=1h     (default: 1h)
@@ -345,6 +350,8 @@ def run_single_experiment(
 ) -> pd.DataFrame:
     print(f"[run] model={model_name} mode={mode} game={game_name}")
 
+    backend = os.getenv("LLMGT_BACKEND", "openrouter").strip().lower()
+
     # Enable prompt caching only for Claude (Anthropic models on OpenRouter).
     # This uses Anthropic-compatible per-block `cache_control` under the hood.
     is_claude = model_id.strip().lower().startswith("anthropic/")
@@ -357,18 +364,30 @@ def run_single_experiment(
     cache_system = os.getenv("LLMGT_CLAUDE_CACHE_SYSTEM", "1") == "1"
     cache_first_user = os.getenv("LLMGT_CLAUDE_CACHE_FIRST_USER", "0") == "1"
 
-    backend_cfg = LLMBackendConfig(
-        backend="openrouter",
-        openrouter_model=model_id,
-        max_output_tokens=MAX_NEW_TOKENS,
-        temperature=TEMPERATURE,
-        agent_style=AGENT_STYLE,  # type: ignore[arg-type]
-        workflow_level=WORKFLOW_LEVEL,
-        openrouter_prompt_caching=enable_prompt_caching,
-        openrouter_prompt_cache_ttl=prompt_cache_ttl if enable_prompt_caching else None,
-        openrouter_cache_system_message=cache_system,
-        openrouter_cache_first_user_message=cache_first_user,
-    )
+    if backend == "hf":
+        # For HF runs, `model_id` is expected to be a Hugging Face repo id
+        # like "meta-llama/Llama-3.3-70B-Instruct".
+        backend_cfg = LLMBackendConfig(
+            backend="hf",
+            hf_model=model_id,
+            hf_max_new_tokens=MAX_NEW_TOKENS,
+            temperature=TEMPERATURE,
+            agent_style=AGENT_STYLE,  # type: ignore[arg-type]
+            workflow_level=WORKFLOW_LEVEL,
+        )
+    else:
+        backend_cfg = LLMBackendConfig(
+            backend="openrouter",
+            openrouter_model=model_id,
+            max_output_tokens=MAX_NEW_TOKENS,
+            temperature=TEMPERATURE,
+            agent_style=AGENT_STYLE,  # type: ignore[arg-type]
+            workflow_level=WORKFLOW_LEVEL,
+            openrouter_prompt_caching=enable_prompt_caching,
+            openrouter_prompt_cache_ttl=prompt_cache_ttl if enable_prompt_caching else None,
+            openrouter_cache_system_message=cache_system,
+            openrouter_cache_first_user_message=cache_first_user,
+        )
 
     agent_a, agent_b = make_agents_for_mode(game, backend_cfg, mode)  # type: ignore[arg-type]
 
@@ -678,7 +697,7 @@ def main() -> None:
             "modes": MODES,
             "k_values": K_VALUES,
             "n_runs": N_RUNS,
-            "backend": "openrouter",
+            "backend": os.getenv("LLMGT_BACKEND", "openrouter"),
             "temperature": TEMPERATURE,
             "max_output_tokens": MAX_NEW_TOKENS,
             "workflow_level": WORKFLOW_LEVEL,
