@@ -22,43 +22,134 @@ def _is_anthropic_model(model_id: str) -> bool:
     return model_id.strip().lower().startswith("anthropic/")
 
 
-def _cache_control(ttl: str | None) -> dict[str, str]:
+# OpenRouter provider routing names are lowercase; this is the canonical form used in docs.
+_ANTHROPIC_PROVIDER_SLUG = "anthropic"
+
+
+def _cache_control(*, ttl: str | None) -> dict[str, str]:
     cc: dict[str, str] = {"type": "ephemeral"}
     if ttl:
         cc["ttl"] = ttl
     return cc
 
 
+def _normalize_ttl(ttl: str | None) -> str | None:
+    """Map our configuration values to OpenRouter/Anthropic TTL encoding."""
+    if ttl is None:
+        return None
+    t = str(ttl).strip()
+    if t in {"", "5m", "5min", "5mins", "300s", "default"}:
+        return None
+    if t == "1h":
+        return "1h"
+    # Unknown TTL -> pass through; provider will reject if unsupported.
+    return t
+
+
+def _provider_rejects_cache_params(exc: Exception) -> bool:
+    """Detect 400s caused by incompatible cache_control fields."""
+
+    status = getattr(exc, "status_code", None)
+    if status != 400:
+        return False
+
+    raw = ""
+    body = getattr(exc, "body", None)
+    if isinstance(body, dict):
+        try:
+            meta = body.get("metadata") or {}
+            raw = str(meta.get("raw") or "")
+        except Exception:  # noqa: BLE001
+            raw = ""
+
+    msg = (str(exc) + "\n" + raw).lower()
+    return "cache_control" in msg and (
+        "extra inputs are not permitted" in msg
+        or "unknown field" in msg
+        or "is not permitted" in msg
+        or "invalid" in msg
+    )
+
+
+def _format_openai_like_error(exc: Exception) -> str:
+    """Extract as much useful info as possible from openai/OpenRouter errors."""
+
+    parts: list[str] = [f"{type(exc).__name__}: {exc}"]
+
+    # openai>=1.0 exceptions often have status_code and response body
+    status = getattr(exc, "status_code", None)
+    if status is not None:
+        parts.append(f"status_code={status}")
+
+    # Some exceptions expose a .response with a JSON body
+    resp = getattr(exc, "response", None)
+    if resp is not None:
+        try:
+            # httpx.Response
+            if hasattr(resp, "json"):
+                parts.append(f"response_json={resp.json()}")
+            elif hasattr(resp, "text"):
+                parts.append(f"response_text={resp.text}")
+        except Exception:  # noqa: BLE001
+            pass
+
+    body = getattr(exc, "body", None)
+    if body is not None:
+        parts.append(f"body={body}")
+
+    return " | ".join(parts)
+
+
+def _is_retryable_openrouter_error(exc: Exception) -> bool:
+    """Return False for clearly permanent errors (won't be fixed by retry)."""
+
+    status = getattr(exc, "status_code", None)
+    # Most 4xx errors are permanent: bad key, no credits, bad model, bad request.
+    if isinstance(status, int) and 400 <= status < 500 and status not in {408, 409, 429}:
+        return False
+
+    msg = str(exc).lower()
+    permanent_markers = [
+        "invalid api key",
+        "incorrect api key",
+        "no api key",
+        "unauthorized",
+        "forbidden",
+        "insufficient credits",
+        "payment required",
+        "model not found",
+        "not found",
+        "bad request",
+    ]
+    if any(m in msg for m in permanent_markers):
+        return False
+
+    return True
+
+
 @dataclass
 class OpenRouterClient:
     """LLM client that routes requests through OpenRouter.
 
-    Parameters
-    ----------
-    model : str
-        OpenRouter model identifier, e.g. ``"google/gemini-2.0-flash-001"``,
-        ``"openai/gpt-4o-mini"``, ``"anthropic/claude-3.5-haiku"``.
-    api_key : str | None
-        OpenRouter API key. Falls back to the ``OPENROUTER_API_KEY`` env var.
-    temperature_default : float
-        Default sampling temperature.
-    max_tokens : int
-        Maximum number of tokens in the completion.
-    max_retries : int
-        How many times to retry on transient errors.
-    retry_backoff_s : float
-        Base back-off between retries (doubles each attempt).
-
     Prompt caching (Anthropic/Claude)
     -------------------------------
-    OpenRouter supports Anthropic prompt caching via per-block ``cache_control``.
 
-    Enable with ``prompt_caching=True`` (or env ``LLMGT_OPENROUTER_PROMPT_CACHING=1``).
-    By default we cache the *system* message only, since it tends to be large and stable.
+    OpenRouter supports Anthropic prompt caching in two doc-supported modes:
 
-    ``prompt_cache_ttl`` supports OpenRouter/Anthropic TTL values:
-      - None or "5m": 5 minutes (default)
-      - "1h":         1 hour
+    1) Automatic caching (top-level cache_control): best for multi-turn chats.
+       IMPORTANT: Only works when routed to the Anthropic provider directly.
+       When top-level cache_control is present, OpenRouter will exclude Bedrock
+       and Vertex endpoints.
+
+    2) Explicit caching (per-block cache_control): works across Anthropic,
+       Bedrock, and Vertex-compatible Claude providers.
+
+    Stability notes:
+    - Some "Claude-compatible" providers may reject certain cache_control encodings.
+      In particular, we've seen Bedrock reject explicit block TTL ("ttl": "1h").
+    - To keep prompt caching enabled while avoiding these provider-specific 400s,
+      this client will retry once without the ttl field (still caching, default 5m).
+    - If you need *1h TTL*, the most reliable option is to force Anthropic-only routing.
     """
 
     model: str = "google/gemini-2.0-flash-001"
@@ -70,11 +161,26 @@ class OpenRouterClient:
 
     # Prompt caching toggles (Claude only)
     prompt_caching: bool = False
-    prompt_cache_ttl: str | None = None  # supported: None/"5m"/"1h"
+    prompt_cache_ttl: str | None = None  # None/"5m"/"1h"
     cache_system_message: bool = True
     cache_first_user_message: bool = False
 
-    # Private — initialised in __post_init__
+    # New: caching mode.
+    # - "explicit": add cache_control to selected content blocks (works on Bedrock/Vertex).
+    # - "auto": set top-level cache_control (forces Anthropic routing; best cache hit rate).
+    prompt_caching_mode: str = "explicit"
+
+    # New: whether to attach ttl to explicit per-block caching. Some providers may reject.
+    explicit_cache_include_ttl: bool = True
+
+    # New: force routing to Anthropic provider (disables Bedrock/Vertex fallback).
+    # This is recommended for stability when using ttl="1h".
+    anthropic_only: bool = False
+
+    # If True, allow raising on caching incompatibility. If False, auto-fallback.
+    # Default: fallback for robustness.
+    fail_on_cache_incompatibility: bool = False
+
     _client: object = field(init=False, repr=False)
 
     def __post_init__(self) -> None:
@@ -102,6 +208,12 @@ class OpenRouterClient:
             self.cache_first_user_message = True
         if os.getenv("LLMGT_OPENROUTER_CACHE_SYSTEM") == "0":
             self.cache_system_message = False
+        if os.getenv("LLMGT_OPENROUTER_PROMPT_CACHING_MODE"):
+            self.prompt_caching_mode = os.getenv("LLMGT_OPENROUTER_PROMPT_CACHING_MODE", "explicit")
+        if os.getenv("LLMGT_OPENROUTER_EXPLICIT_CACHE_INCLUDE_TTL") == "0":
+            self.explicit_cache_include_ttl = False
+        if os.getenv("LLMGT_OPENROUTER_ANTHROPIC_ONLY") == "1":
+            self.anthropic_only = True
 
         self._client = OpenAI(
             base_url=OPENROUTER_BASE_URL,
@@ -112,16 +224,27 @@ class OpenRouterClient:
             },
         )
 
-    def _serialize_messages(self, messages: Sequence[LLMMessage]) -> list[dict[str, Any]]:
+    def _serialize_messages(
+        self,
+        messages: Sequence[LLMMessage],
+        *,
+        disable_prompt_caching: bool = False,
+        explicit_include_ttl: bool = True,
+    ) -> list[dict[str, Any]]:
         """Convert internal messages to OpenRouter chat.completions payload."""
 
-        use_claude_caching = self.prompt_caching and _is_anthropic_model(self.model)
+        use_claude_caching = (
+            (not disable_prompt_caching)
+            and self.prompt_caching
+            and _is_anthropic_model(self.model)
+            and self.prompt_caching_mode == "explicit"
+        )
 
         out: list[dict[str, Any]] = []
         user_seen = 0
+        ttl = _normalize_ttl(self.prompt_cache_ttl)
         for m in messages:
             if m.content_blocks is not None:
-                # Pass through blocks as-is.
                 out.append({"role": m.role, "content": list(m.content_blocks)})
                 if m.role == "user":
                     user_seen += 1
@@ -140,7 +263,7 @@ class OpenRouterClient:
                 should_cache = True
 
             if should_cache and m.content:
-                ttl = None if (self.prompt_cache_ttl in (None, "", "5m")) else str(self.prompt_cache_ttl)
+                block_cc = _cache_control(ttl=ttl if explicit_include_ttl else None)
                 out.append(
                     {
                         "role": m.role,
@@ -148,7 +271,7 @@ class OpenRouterClient:
                             {
                                 "type": "text",
                                 "text": m.content,
-                                "cache_control": _cache_control(ttl),
+                                "cache_control": block_cc,
                             }
                         ],
                     }
@@ -161,6 +284,43 @@ class OpenRouterClient:
 
         return out
 
+    def _serialize_plain_messages(self, messages: Sequence[LLMMessage]) -> list[dict[str, Any]]:
+        """Serialize messages without injecting cache_control blocks."""
+        out: list[dict[str, Any]] = []
+        for m in messages:
+            if m.content_blocks is not None:
+                out.append({"role": m.role, "content": list(m.content_blocks)})
+            else:
+                out.append({"role": m.role, "content": m.content or ""})
+        return out
+
+    def _top_level_cache_control(self) -> dict[str, str] | None:
+        if not (self.prompt_caching and _is_anthropic_model(self.model)):
+            return None
+        if self.prompt_caching_mode != "auto":
+            return None
+        return _cache_control(ttl=_normalize_ttl(self.prompt_cache_ttl))
+
+    def _provider_routing(self) -> dict[str, Any] | None:
+        """Optional OpenRouter provider routing config.
+
+        We force Anthropic-only routing when explicitly requested, or when using 1h TTL
+        (since some alternate Claude providers reject ttl fields).
+
+        This keeps prompt caching enabled and avoids hard failures.
+        """
+
+        if not _is_anthropic_model(self.model):
+            return None
+
+        ttl = _normalize_ttl(self.prompt_cache_ttl)
+        force_anthropic = self.anthropic_only or (ttl == "1h")
+        if not force_anthropic:
+            return None
+
+        # OpenRouter standard routing hint. Avoid specifying order elsewhere in this repo.
+        return {"order": [_ANTHROPIC_PROVIDER_SLUG]}
+
     # ------------------------------------------------------------------
     def complete(
         self,
@@ -169,24 +329,77 @@ class OpenRouterClient:
         temperature: float | None = None,
     ) -> str:
         temp = self.temperature_default if temperature is None else temperature
-        input_msgs = self._serialize_messages(messages)
 
         last_err: Exception | None = None
+
+        # Explicit mode fallback: if provider rejects ttl, retry with caching but without ttl.
+        tried_no_ttl = False
+
         for attempt in range(self.max_retries + 1):
             try:
+                cache_top = self._top_level_cache_control()
+
+                if self.prompt_caching_mode == "explicit":
+                    input_msgs = self._serialize_messages(
+                        messages,
+                        disable_prompt_caching=False,
+                        explicit_include_ttl=(self.explicit_cache_include_ttl and not tried_no_ttl),
+                    )
+                else:
+                    input_msgs = self._serialize_plain_messages(messages)
+
+                kwargs: dict[str, Any] = {
+                    "model": self.model,
+                    "messages": input_msgs,
+                    "temperature": temp,
+                    "max_tokens": self.max_tokens,
+                }
+
+                # OpenRouter supports extra request fields like cache_control/provider.
+                # The openai>=1.x SDK is strict about accepted kwargs, so we must pass
+                # OpenRouter extensions via `extra_body`.
+                extra_body: dict[str, Any] = {}
+
+                if cache_top is not None:
+                    extra_body["cache_control"] = cache_top
+
+                provider = self._provider_routing()
+                if provider is not None:
+                    extra_body["provider"] = provider
+
+                if extra_body:
+                    kwargs["extra_body"] = extra_body
+
                 resp = self._client.chat.completions.create(  # type: ignore[union-attr]
-                    model=self.model,
-                    messages=input_msgs,
-                    temperature=temp,
-                    max_tokens=self.max_tokens,
+                    **kwargs
                 )
                 content = (resp.choices[0].message.content or "").strip()
                 return content if content else "OK"
 
             except Exception as exc:  # noqa: BLE001
                 last_err = exc
+
+                if (
+                    self.prompt_caching_mode == "explicit"
+                    and not tried_no_ttl
+                    and self.explicit_cache_include_ttl
+                    and _provider_rejects_cache_params(exc)
+                ):
+                    # Keep prompt caching enabled; just drop ttl and try again.
+                    if self.fail_on_cache_incompatibility:
+                        break
+                    tried_no_ttl = True
+                    continue
+
+                if not _is_retryable_openrouter_error(exc):
+                    break
+
                 if attempt < self.max_retries:
                     wait = self.retry_backoff_s * (2**attempt)
                     time.sleep(wait)
 
-        raise RuntimeError(f"OpenRouter request failed after {self.max_retries + 1} attempts") from last_err
+        detail = _format_openai_like_error(last_err) if last_err else "<unknown>"
+        raise RuntimeError(
+            f"OpenRouter request failed after {self.max_retries + 1} attempts | model={self.model} | {detail}"
+        ) from last_err
+

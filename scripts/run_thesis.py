@@ -6,7 +6,17 @@ from datetime import datetime, timezone
 from typing import Dict, List
 
 from dotenv import load_dotenv
-load_dotenv()  # reads .env for OPENROUTER_API_KEY, etc.
+
+# Robust .env loading:
+# - In some execution contexts (e.g., some IDE runners), python-dotenv's auto-discovery
+#   can fail or the working directory won't be the repo root.
+# - We therefore load .env explicitly from the repo root (one level above /scripts).
+_dotenv_path = Path(os.getenv("DOTENV_PATH", "")) if os.getenv("DOTENV_PATH") else None
+if _dotenv_path is not None:
+    load_dotenv(_dotenv_path)
+else:
+    _repo_root = Path(__file__).resolve().parents[1]
+    load_dotenv(_repo_root / ".env")
 
 
 import pandas as pd
@@ -35,16 +45,16 @@ MODELS: Dict[str, str] = {
     #"gpt-4o":             "openai/gpt-4o",
 
     # --- Claude ---
-    #"claude-3.5-haiku":   "anthropic/claude-3.5-haiku",
+    "claude-3.5-haiku":   "anthropic/claude-3.5-haiku",
     #"claude-3.5-sonnet":  "anthropic/claude-3.5-sonnet",
 
     # --- Free example (OpenRouter) ---
-    "llama-3.3":          "meta-llama/llama-3.3-70b-instruct",
+    #"llama-3.3":          "meta-llama/llama-3.3-70b-instruct",
 }
 
 GAMES = {
-    "prisoners_dilemma": PrisonersDilemma(),
-    #"stag_hunt": StagHunt(),
+    #"prisoners_dilemma": PrisonersDilemma(),
+    "stag_hunt": StagHunt(),
     #"battle_of_sexes": BattleOfSexes(),
     #"ultimatum": UltimatumGame(),
 }
@@ -466,7 +476,9 @@ def build_all_plots(run_root: Path) -> None:
                 data.append(df)
 
     if not data:
-        raise RuntimeError(f"No results found under: {raw_dir}")
+        print(f"[plots] No results found under: {raw_dir}")
+        print("[plots] Skipping plot generation.")
+        return
 
     df_all = pd.concat(data, ignore_index=True)
     df_all = _add_derived_metrics(df_all)
@@ -687,6 +699,10 @@ def main() -> None:
 
     run = make_run_dir(tag="THESIS_FULL", create_standard_dirs=False)
     run_root = run.root
+
+    # Ensure expected directories exist even if experiments fail early.
+    (run_root / "raw").mkdir(parents=True, exist_ok=True)
+    (run_root / "plots").mkdir(parents=True, exist_ok=True)
 
     write_run_meta(
         run_root / "run_meta.json",
