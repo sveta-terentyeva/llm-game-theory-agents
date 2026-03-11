@@ -206,3 +206,29 @@ def test_provider_routing_passed_via_extra_body_not_kwarg() -> None:
     extra = sent.get("extra_body")
     assert isinstance(extra, dict)
     assert extra["provider"] == {"order": ["anthropic"]}
+
+
+def test_cached_system_preamble_env_toggle(monkeypatch) -> None:
+    from llmgt.llm.prompt_caching import maybe_prepend_cached_preamble
+
+    def _count_tokens_approx(text: str) -> int:
+        try:
+            import tiktoken  # type: ignore
+
+            enc = tiktoken.get_encoding("cl100k_base")
+            return len(enc.encode(text))
+        except Exception:
+            return max(1, int(len(text) / 4))
+
+    monkeypatch.delenv("LLMGT_OPENROUTER_CACHE_PREAMBLE", raising=False)
+    base = "SYSTEM"
+    assert maybe_prepend_cached_preamble(base) == base
+
+    monkeypatch.setenv("LLMGT_OPENROUTER_CACHE_PREAMBLE", "1")
+    out = maybe_prepend_cached_preamble(base)
+    assert out.endswith(base)
+
+    # Should exceed Claude 3.5 Haiku minimum (~2048 tokens) but not be enormous.
+    approx = _count_tokens_approx(out)
+    assert approx >= 2048
+    assert approx <= 3200

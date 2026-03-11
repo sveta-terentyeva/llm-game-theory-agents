@@ -19,6 +19,28 @@ else:
     load_dotenv(_repo_root / ".env")
 
 
+def _map_env_if_unset(dst: str, src: str) -> None:
+    """If *dst* is not set but *src* is, copy src->dst.
+
+    This keeps a single source of truth (OpenRouter env vars) while preserving
+    backwards-compatibility with older script-specific `LLMGT_CLAUDE_*` knobs.
+    """
+
+    if os.getenv(dst) is None and os.getenv(src) is not None:
+        os.environ[dst] = os.getenv(src) or ""
+
+
+# Backwards-compatible env mapping:
+# Prefer LLMGT_OPENROUTER_* if present; otherwise fall back to LLMGT_CLAUDE_*.
+_map_env_if_unset("LLMGT_OPENROUTER_PROMPT_CACHING", "LLMGT_CLAUDE_PROMPT_CACHING")
+_map_env_if_unset("LLMGT_OPENROUTER_PROMPT_CACHING_MODE", "LLMGT_CLAUDE_PROMPT_CACHING_MODE")
+_map_env_if_unset("LLMGT_OPENROUTER_PROMPT_CACHE_TTL", "LLMGT_CLAUDE_PROMPT_CACHE_TTL")
+_map_env_if_unset("LLMGT_OPENROUTER_CACHE_SYSTEM", "LLMGT_CLAUDE_CACHE_SYSTEM")
+_map_env_if_unset("LLMGT_OPENROUTER_CACHE_FIRST_USER", "LLMGT_CLAUDE_CACHE_FIRST_USER")
+_map_env_if_unset("LLMGT_OPENROUTER_EXPLICIT_CACHE_INCLUDE_TTL", "LLMGT_CLAUDE_EXPLICIT_INCLUDE_TTL")
+_map_env_if_unset("LLMGT_OPENROUTER_ANTHROPIC_ONLY", "LLMGT_CLAUDE_ANTHROPIC_ONLY")
+
+
 import pandas as pd
 
 # Use non-interactive backend for reliability in headless runs
@@ -54,9 +76,9 @@ MODELS: Dict[str, str] = {
 
 GAMES = {
     #"prisoners_dilemma": PrisonersDilemma(),
-    "stag_hunt": StagHunt(),
-    #"battle_of_sexes": BattleOfSexes(),
-    #"ultimatum": UltimatumGame(),
+    #"stag_hunt": StagHunt(),
+    # "battle_of_sexes": BattleOfSexes(),
+    "ultimatum": UltimatumGame(),
 }
 
 MODES = ["no_workflow", "workflow"]
@@ -374,6 +396,18 @@ def run_single_experiment(
     cache_system = os.getenv("LLMGT_CLAUDE_CACHE_SYSTEM", "1") == "1"
     cache_first_user = os.getenv("LLMGT_CLAUDE_CACHE_FIRST_USER", "0") == "1"
 
+    # Caching stability/routing knobs
+    caching_mode = os.getenv("LLMGT_CLAUDE_PROMPT_CACHING_MODE", "explicit")
+    explicit_include_ttl = os.getenv("LLMGT_CLAUDE_EXPLICIT_INCLUDE_TTL", "1") == "1"
+
+    # If TTL=1h is requested for Claude, enforce Anthropic-only routing by default.
+    # You can override with LLMGT_CLAUDE_ANTHROPIC_ONLY=0 if you explicitly want fallback.
+    anthropic_only_env = os.getenv("LLMGT_CLAUDE_ANTHROPIC_ONLY")
+    anthropic_only = (
+        (anthropic_only_env is None and str(prompt_cache_ttl).strip() == "1h")
+        or anthropic_only_env == "1"
+    )
+
     if backend == "hf":
         # For HF runs, `model_id` is expected to be a Hugging Face repo id
         # like "meta-llama/Llama-3.3-70B-Instruct".
@@ -397,6 +431,9 @@ def run_single_experiment(
             openrouter_prompt_cache_ttl=prompt_cache_ttl if enable_prompt_caching else None,
             openrouter_cache_system_message=cache_system,
             openrouter_cache_first_user_message=cache_first_user,
+            openrouter_prompt_caching_mode=caching_mode,  # type: ignore[arg-type]
+            openrouter_explicit_cache_include_ttl=explicit_include_ttl,
+            openrouter_anthropic_only=(anthropic_only if enable_prompt_caching and is_claude else False),
         )
 
     agent_a, agent_b = make_agents_for_mode(game, backend_cfg, mode)  # type: ignore[arg-type]

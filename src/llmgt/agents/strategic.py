@@ -20,6 +20,7 @@ from llmgt.agents.parsing import (
 from llmgt.games.base import Game
 from llmgt.logging.records import ChatMessage
 from llmgt.llm.client import LLMClient, LLMMessage
+from llmgt.llm.prompt_caching import maybe_prepend_cached_preamble
 
 
 @dataclass
@@ -51,6 +52,7 @@ class StrategicLLMAgent:
             "Where X is agent_a's final action and Y is agent_b's final action.\n"
             "Do not add any extra words.\n"
         )
+        system = maybe_prepend_cached_preamble(system)
 
         history = format_history(messages)
         last_pair = extract_last_pair(messages)
@@ -104,6 +106,7 @@ class StrategicLLMAgent:
             f"Valid actions: {list(allowed)}\n"
             "You MUST output exactly one valid action token, and nothing else."
         )
+        system = maybe_prepend_cached_preamble(system)
         user = f"Conversation so far:\n{format_history(messages)}\n\nOutput your final action token."
 
         reply = self.client.complete(

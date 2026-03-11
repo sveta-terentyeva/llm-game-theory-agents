@@ -57,6 +57,11 @@ class LLMBackendConfig:
     openrouter_cache_system_message: bool = True
     openrouter_cache_first_user_message: bool = False
 
+    # New: OpenRouter prompt caching mode + routing controls
+    openrouter_prompt_caching_mode: Literal["explicit", "auto"] = "explicit"
+    openrouter_explicit_cache_include_ttl: bool = True
+    openrouter_anthropic_only: bool = False
+
     # Agent behaviour
     agent_style: Literal["basic", "strategic"] = "strategic"
     workflow_level: int = 2  # only used in workflow mode
@@ -114,6 +119,9 @@ def _make_client(cfg: LLMBackendConfig) -> Any:
             prompt_cache_ttl=cfg.openrouter_prompt_cache_ttl,
             cache_system_message=cfg.openrouter_cache_system_message,
             cache_first_user_message=cfg.openrouter_cache_first_user_message,
+            prompt_caching_mode=cfg.openrouter_prompt_caching_mode,
+            explicit_cache_include_ttl=cfg.openrouter_explicit_cache_include_ttl,
+            anthropic_only=cfg.openrouter_anthropic_only,
         )
         return client
 

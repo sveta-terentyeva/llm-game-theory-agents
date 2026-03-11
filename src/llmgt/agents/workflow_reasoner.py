@@ -21,6 +21,7 @@ from llmgt.agents.parsing import (
 from llmgt.games.base import Game
 from llmgt.logging.records import ChatMessage
 from llmgt.llm.client import LLMClient, LLMMessage
+from llmgt.llm.prompt_caching import maybe_prepend_cached_preamble
 
 
 @dataclass
@@ -97,6 +98,7 @@ class WorkflowStrategicLLMAgent:
             "- agent_b MUST output: COUNTER: (X,Y) or ACCEPT: (X,Y)\n"
             "Where X is agent_a's final action and Y is agent_b's final action.\n"
         )
+        system = maybe_prepend_cached_preamble(system)
 
         history = format_history(messages)
         last_pair = extract_last_pair(messages)
@@ -173,6 +175,7 @@ class WorkflowStrategicLLMAgent:
             "- Output MUST be exactly one valid action token, and nothing else.\n\n"
             + self._workflow_instructions()
         )
+        system = maybe_prepend_cached_preamble(system)
 
         user = (
             f"Conversation so far:\n{format_history(messages)}\n\n"

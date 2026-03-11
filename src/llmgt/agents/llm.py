@@ -12,6 +12,7 @@ from llmgt.agents.parsing import extract_accepted_pair, format_history, parse_ac
 from llmgt.games.base import Game
 from llmgt.logging.records import ChatMessage
 from llmgt.llm.client import LLMClient, LLMMessage
+from llmgt.llm.prompt_caching import maybe_prepend_cached_preamble
 
 
 @dataclass
@@ -34,6 +35,7 @@ class LLMAgent:
             "When accepting, use: ACCEPT: (X,Y)\n"
             "Here X is agent_a's final action and Y is agent_b's final action.\n"
         )
+        system = maybe_prepend_cached_preamble(system)
         user = (
             f"Conversation so far:\n{format_history(messages)}\n\n"
             "Send ONE short message. If you accept a plan, output exactly: ACCEPT: (X,Y). "
@@ -62,6 +64,7 @@ class LLMAgent:
             f"Valid actions: {list(allowed)}\n"
             "You MUST output exactly one valid action token, and nothing else."
         )
+        system = maybe_prepend_cached_preamble(system)
         user = (
             f"Conversation so far:\n{format_history(messages)}\n\n"
             "Output your final action token."
