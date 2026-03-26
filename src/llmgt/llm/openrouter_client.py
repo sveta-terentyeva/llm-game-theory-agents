@@ -34,10 +34,15 @@ def _cache_control(*, ttl: str | None) -> dict[str, str]:
 
 
 def _normalize_ttl(ttl: str | None) -> str | None:
-    """Map our configuration values to OpenRouter/Anthropic TTL encoding."""
+    """Map our configuration values to OpenRouter/Anthropic TTL encoding.
+
+    Returns:
+    - None: use default 5-minute TTL (safest for Bedrock/Vertex compatibility)
+    - "1h": explicit 1-hour TTL (requires Anthropic-only routing)
+    """
     if ttl is None:
         return None
-    t = str(ttl).strip()
+    t = str(ttl).strip().lower()
     if t in {"", "5m", "5min", "5mins", "300s", "default"}:
         return None
     if t == "1h":
@@ -134,22 +139,24 @@ class OpenRouterClient:
     Prompt caching (Anthropic/Claude)
     -------------------------------
 
-    OpenRouter supports Anthropic prompt caching in two doc-supported modes:
+    OpenRouter supports Anthropic prompt caching via explicit per-block cache_control.
 
-    1) Automatic caching (top-level cache_control): best for multi-turn chats.
-       IMPORTANT: Only works when routed to the Anthropic provider directly.
-       When top-level cache_control is present, OpenRouter will exclude Bedrock
-       and Vertex endpoints.
+    Caching modes:
+    1. "explicit" (recommended): Per-block cache_control on system/user messages.
+       - Default: Uses 5-minute TTL (compatible with Bedrock/Vertex)
+       - With 1h TTL: Requires anthropic_only=True to avoid Bedrock rejection
+       - Most cost-effective: write @ 1.25x (5m) or 2x (1h), read @ 0.1x
 
-    2) Explicit caching (per-block cache_control): works across Anthropic,
-       Bedrock, and Vertex-compatible Claude providers.
+    2. "auto" (legacy): Top-level cache_control.
+       - Only works with Anthropic provider (excludes Bedrock/Vertex)
+       - Simpler API but less flexible
 
     Stability notes:
-    - Some "Claude-compatible" providers may reject certain cache_control encodings.
-      In particular, we've seen Bedrock reject explicit block TTL ("ttl": "1h").
-    - To keep prompt caching enabled while avoiding these provider-specific 400s,
-      this client will retry once without the ttl field (still caching, default 5m).
-    - If you need *1h TTL*, the most reliable option is to force Anthropic-only routing.
+    - Bedrock DOES NOT support "ttl" in per-block cache_control.
+      If ttl is attached and Bedrock is used, it returns 400 "Extra inputs not permitted".
+    - Solution: Use explicit_cache_include_ttl=False to omit ttl (defaults to 5m).
+      Or: Use anthropic_only=True when you need 1h TTL.
+    - This client auto-retries without TTL if Bedrock rejects the request.
     """
 
     model: str = "google/gemini-2.0-flash-001"
@@ -231,7 +238,12 @@ class OpenRouterClient:
         disable_prompt_caching: bool = False,
         explicit_include_ttl: bool = True,
     ) -> list[dict[str, Any]]:
-        """Convert internal messages to OpenRouter chat.completions payload."""
+        """Convert internal messages to OpenRouter chat.completions payload.
+
+        Important: Bedrock doesn't support ttl in block-level cache_control.
+        We only include ttl when explicitly requested AND not ruled out by
+        provider compatibility checks.
+        """
 
         use_claude_caching = (
             (not disable_prompt_caching)
@@ -242,7 +254,10 @@ class OpenRouterClient:
 
         out: list[dict[str, Any]] = []
         user_seen = 0
-        ttl = _normalize_ttl(self.prompt_cache_ttl)
+        # Only include TTL if explicitly requested AND compatible with the configured routing.
+        # For Anthropic-only routing with 1h TTL, we include it.
+        # Otherwise, omit TTL for Bedrock/Vertex compatibility.
+        ttl = _normalize_ttl(self.prompt_cache_ttl) if explicit_include_ttl else None
         for m in messages:
             if m.content_blocks is not None:
                 out.append({"role": m.role, "content": list(m.content_blocks)})
