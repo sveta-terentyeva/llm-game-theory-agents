@@ -1,4 +1,4 @@
-"""Pydantic data models for episode records and experiment summaries."""
+"""Pydantic data models for episode records."""
 
 from __future__ import annotations
 
@@ -52,33 +52,5 @@ class EpisodeRecord(BaseModel):
     finished_at_utc: Optional[str] = None
 
     winner: Optional[Literal["agent_a", "agent_b", "tie"]] = None
-
-
-class ExperimentSummary(BaseModel):
-    model_config = ConfigDict(protected_namespaces=())
-
-    game: str
-    mode: Literal["no_workflow", "workflow"]
-    n_episodes: int
-    max_comm_rounds: int
-
-    model_a: str
-    model_b: str
-
-    action_pair_counts: dict[str, int]
-    action_pair_freq: dict[str, float]
-
-    nash_hit_rate: float
-    pareto_hit_rate: float
-    agreement_hit_rate: float
-
-    avg_payoff_a: float
-    avg_payoff_b: float
-
-    theory_nash: list[tuple[str, str]]
-    theory_pareto: list[tuple[str, str]]
-
-    conclusion: str
-
 
 

@@ -38,3 +38,11 @@ hf = [
 ollama = [
   "requests",
 ]
+plotting = [
+  "matplotlib>=3.7",
+]
+dev = [
+  "pytest>=9.0",
+  "pytest-cov>=4.0",
+  "tiktoken>=0.5",
+]

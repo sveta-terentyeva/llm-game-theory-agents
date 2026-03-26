@@ -1,15 +1,13 @@
 # LLM Game-Theory Agents
 
 [![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/downloads/)
-[![Tests](https://img.shields.io/badge/tests-51%20passed-brightgreen.svg)](#testing)
+[![Tests](https://img.shields.io/badge/tests-64%20passed-brightgreen.svg)](#testing)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
 A research-oriented simulator for **two-player classical games** with **LLM-based agents** (plus simple baselines).  
 Built as the codebase for a diploma/thesis investigating:
 
 > **How does a limited communication budget *K* (number of pre-play dialogue rounds) affect agreement, equilibrium outcomes, and welfare in classical games — and does structured "workflow prompting" improve these outcomes?**
-
-Ukrainian translation: [`README_UA.md`](README_UA.md)
 
 ---
 
@@ -23,10 +21,10 @@ Ukrainian translation: [`README_UA.md`](README_UA.md)
 - [Installation](#installation)
 - [LLM Backends](#llm-backends)
 - [Running Experiments](#running-experiments)
+- [Prompt Caching (Cost Optimization)](#prompt-caching-cost-optimization)
 - [Output Artifacts](#output-artifacts)
 - [Project Structure](#project-structure)
 - [Testing](#testing)
-- [Known Issues & Design Decisions](#known-issues--design-decisions)
 - [Reproducibility](#reproducibility)
 - [Troubleshooting](#troubleshooting)
 
@@ -34,13 +32,13 @@ Ukrainian translation: [`README_UA.md`](README_UA.md)
 
 ## Motivation & Research Question
 
-Classical game theory assumes perfectly rational agents.  Modern LLMs can be cast as
-bounded-rational players that *communicate* before committing to actions.  This project
+Classical game theory assumes perfectly rational agents. Modern LLMs can be cast as
+bounded-rational players that *communicate* before committing to actions. This project
 studies how:
 
-1. **Communication budget `K`** (0 = no talk, 1..6 = rounds of dialogue before action) affects whether agents reach agreements, Nash equilibria, Pareto optima, and higher joint welfare.
+1. **Communication budget `K`** (0 = no talk, 1..9 = rounds of dialogue before action) affects whether agents reach agreements, Nash equilibria, Pareto optima, and higher joint welfare.
 2. **Workflow prompting** (structured reasoning: dominant strategies → best responses → Nash → Pareto → decision) compares against free-form negotiation.
-3. Different **LLM backends** (heuristic baseline, Ollama local models, HuggingFace Transformers, OpenAI API) behave under the same protocol.
+3. Different **LLM models** (Claude, GPT-4o, Llama via HuggingFace or local) behave under the same protocol.
 
 The simulator runs hundreds of episodes per configuration, logs full dialogues, and computes
 publication-ready aggregate metrics with standard deviations.
@@ -85,17 +83,11 @@ Implemented in `src/llmgt/games/`:
 | **Battle of the Sexes** (`bos`) | O, F | (O,O), (F,F) | (O,O), (F,F) | Coordination with conflicting preferences |
 | **Ultimatum Game** (`ultimatum`) | Proposer: L,F / Responder: A,R | (L,A) | (F,A) | Fairness vs. subgame-perfect equilibrium |
 
-Each game class provides:
-- `actions_for(role)` — role-specific action sets (important for asymmetric games like Ultimatum)
-- `payoff(action_a, action_b)` → `(float, float)`
-- `nash_equilibria()` → `set[tuple[str, str]]`
-- `pareto_optima()` → `set[tuple[str, str]]`
-
 ---
 
 ## Agent Types
 
-### Baseline Agents (no LLM)
+### Baseline Agents
 
 | Agent | Description |
 |-------|-------------|
@@ -111,20 +103,7 @@ Each game class provides:
 |-------|-------------|
 | `LLMAgent` | Free-form negotiation with minimal game-theory guidance. |
 | `StrategicLLMAgent` | Payoff-table–aware prompts with structured protocol (PROPOSE/COUNTER/ACCEPT). |
-| `WorkflowStrategicLLMAgent` | Full game-theoretic workflow reasoning (dominant strategies → best responses → Nash → Pareto → decision). Configurable depth via `workflow_level` (1–3). |
-
-### Negotiation Protocol
-
-All communicative agents follow the **PROPOSE / COUNTER / ACCEPT** protocol:
-
-```
-Round 1: Agent A → PROPOSE: (X,Y)     # X = A's action, Y = B's action
-         Agent B → ACCEPT: (X,Y)       # or COUNTER: (X',Y')
-Round 2: Agent A → PROPOSE: (X',Y')   # re-proposes
-         Agent B → ACCEPT: (X',Y')     # final agreement
-```
-
-When `ACCEPT` is detected in workflow mode, communication stops early.
+| `WorkflowStrategicLLMAgent` | Full game-theoretic workflow reasoning. Configurable depth via `workflow_level`. |
 
 ---
 
@@ -134,32 +113,19 @@ When `ACCEPT` is detected in workflow mode, communication stops early.
 One simulation run: optional communication (up to *K* rounds) → actions → payoffs → metrics.
 
 ### Communication Budget `K`
-Maximum chat rounds before choosing actions.  The sweep experiment varies *K* from 0 to 6 to study how more communication affects outcomes.
+Maximum chat rounds before choosing actions. The sweep experiment varies *K* from 0 to 9 to study how more communication affects outcomes.
 
-### Metrics (per episode)
+### Key Metrics
 
 | Metric | Description |
 |--------|-------------|
-| `agreement_hit` | Did agents' final actions match what they agreed on during communication? |
-| `rounds_to_agreement` | First round where agreement appeared |
-| `nash_hit` | Did the outcome match a Nash equilibrium? |
-| `pareto_hit` | Did the outcome match a Pareto optimum? |
-| `theory_hit` | Combined success: Pareto-Nash if it exists, else Nash |
-| `rounds_to_theory_hit` | First round where the theory-target outcome was agreed upon |
-| `welfare` | Sum of payoffs: `payoff_a + payoff_b` |
-| `winner` | Which agent got a higher payoff (or tie) |
+| `agreement_rate` | Fraction of episodes where agents agreed on actions |
+| `theory_rate` | Match rate for theoretical solution concepts (Nash/Pareto) |
+| `welfare_mean` | Average joint payoff (agent A + agent B) |
+| `mean_rounds_to_agreement` | Average round where agreement was reached |
+| `payoff_diff_mean` | Average absolute payoff difference (fairness metric) |
 
-### Aggregated Metrics (per K)
-
-The `summarize_by_k()` function computes means, standard deviations, and rates across all episodes for each *K* value.  Key columns in `summary_by_k.csv`:
-
-- **Rates**: `agreement_rate`, `nash_rate`, `pareto_rate`, `theory_rate`
-- **Rounds**: `mean_rounds_to_agreement`, `mean_rounds_to_theory_hit`  
-- **Payoffs**: `welfare_mean`, `payoff_mean`, `payoff_diff_mean`
-- **Communication**: `used_comm_rounds_mean`, `wasted_comm_rounds_mean`
-- **Protocol**: `propose_rate`, `counter_rate`, `accept_rate`, `follow_accept_rate`
-- **Game-theoretic**: `regret_a_mean`, `regret_b_mean`, `welfare_gap_mean`
-- All numeric metrics include `*_std` (standard deviation) columns for error bars.
+For full metric descriptions, see `src/llmgt/metrics/`.
 
 ---
 
@@ -169,19 +135,16 @@ The `summarize_by_k()` function computes means, standard deviations, and rates a
 
 ```bash
 # Clone and install
-git clone <git@github.com:sveta-terentyeva/llm-game-theory-agents.git>
+git clone https://github.com/sveta-terentyeva/llm-game-theory-agents.git
 cd llm-game-theory-agents
 python -m venv .venv
 source .venv/bin/activate
 pip install -e .
 
-# Optional: plotting
-pip install matplotlib
-
-# Optional: HuggingFace backend (GPU recommended)
+# Optional: HuggingFace backend (GPU recommended for faster inference)
 pip install -e ".[hf]"
 
-# Optional: Ollama backend
+# Optional: Ollama backend (for local models)
 pip install -e ".[ollama]"
 ```
 
@@ -189,130 +152,145 @@ pip install -e ".[ollama]"
 
 ## LLM Backends
 
-| Backend | Flag | Requires | Use Case |
-|---------|------|----------|----------|
-| `heuristic` | `--backend heuristic` | Nothing | Fast smoke tests, deterministic baseline |
-| `ollama` | `--backend ollama` | Local Ollama server | Local open-source models (Llama, Mistral) |
-| `hf` | `--backend hf` | `torch`, `transformers` | Direct HuggingFace inference (GPU recommended) |
-| `openai` | `--backend openai` | `openai` package + API key | OpenAI API models |
-
-### Configuration
-
-| Parameter | Default | Description |
-|-----------|---------|-------------|
-| `--temperature` | 0.7 | Sampling temperature |
-| `--max-output-tokens` | 64 | Max tokens per LLM response |
-| `--agent-style` | `strategic` | `basic` or `strategic` |
-| `--workflow-level` | 2 | Workflow depth: 1=light, 2=standard, 3=strict |
-
-Backend-specific options: see `llmgt sweep --help`.
+| Backend | Use Case | Requirements |
+|---------|----------|--------------|
+| `heuristic` | Fast smoke tests, deterministic baseline | None |
+| `openrouter` | **Recommended for thesis** — Access Claude, GPT-4o, Llama via OpenRouter API | OpenRouter API key |
+| `hf` | Direct HuggingFace Transformers inference (local or HF hosted) | `torch`, `transformers` (GPU recommended) |
+| `ollama` | Local open-source models (Llama, Mistral) | Local Ollama server |
+| `openai` | Direct OpenAI API access | OpenAI API key |
 
 ---
 
 ## Running Experiments
 
-### CLI: Communication Sweep (main experiment)
+### Main Experiment: Full Thesis Pipeline
 
 ```bash
-# Fast smoke test (heuristic, ~1 second)
-llmgt sweep --game pd --mode workflow --backend heuristic \
-  --k 0..6 --n-runs 50 --plots
+export LLMGT_N_RUNS=100
+export LLMGT_K_VALUES=0,1,2,3,4,5,6,7,8,9
+export LLMGT_TEMPERATURE=0.7
+export LLMGT_MAX_NEW_TOKENS=64
 
-# Ollama with local Llama 3.1
-llmgt sweep --game stag --mode workflow --backend ollama \
-  --ollama-model llama3.1:8b --k 0..6 --n-runs 200 --plots
-
-# HuggingFace Transformers
-llmgt sweep --game bos --mode workflow --backend hf \
-  --hf-model mistralai/Mistral-7B-Instruct-v0.2 --k 0..6 --n-runs 50 --plots
-
-# OpenAI API
-llmgt sweep --game ultimatum --mode no_workflow --backend openai \
-  --openai-model gpt-4o-mini --k 0..6 --n-runs 200 --plots
+# With OpenRouter backend (recommended)
+export OPENROUTER_API_KEY="your-api-key"
+python scripts/run_thesis.py
 ```
 
-### Scripts
+### With Prompt Caching (OpenRouter + Claude)
 
-The `scripts/` directory contains pre-configured experiment runners:
-
-| Script | Description |
-|--------|-------------|
-| `run_pd.py` | Fixed-action PD baseline |
-| `run_pd_llm.py` | LLM agents on PD (heuristic backend) |
-| `run_pd_workflow.py` | Stochastic workflow agents, PD sweep |
-| `run_comm_experiment.py` | Fixed-agent communication sweep |
-| `run_workflow_sweep_all.py` | Rule-based workflow sweep across all 4 games |
-| `run_llm_sweep_all.py` | LLM sweep across all 4 games (configurable backend via env vars) |
-| `run_thesis.py` | Full thesis pipeline: all models × all games × all modes → plots |
+Prompt caching dramatically reduces costs for repeated prompts. Configuration:
 
 ```bash
-# Example: full thesis run with TinyLlama
-LLMGT_N_RUNS=50 python scripts/run_thesis.py
+# Enable prompt caching for Claude models
+export LLMGT_OPENROUTER_PROMPT_CACHING=1
+export LLMGT_OPENROUTER_PROMPT_CACHE_TTL=1h
+export LLMGT_OPENROUTER_ANTHROPIC_ONLY=1
+
+# Optional: control which parts of the prompt are cached
+export LLMGT_OPENROUTER_CACHE_SYSTEM=1         # cache system message (always enabled)
+export LLMGT_OPENROUTER_CACHE_FIRST_USER=0     # don't cache first user message
+export LLMGT_OPENROUTER_PROMPT_CACHING_MODE=explicit
+
+export LLMGT_N_RUNS=100
+export LLMGT_K_VALUES=0,1,2,3,4,5,6,7,8,9
+python scripts/run_thesis.py
 ```
+
+### With HuggingFace Backend (Local or Free Models)
+
+```bash
+export LLMGT_BACKEND=hf
+export LLMGT_HF_MODEL=meta-llama/Llama-3.3-70B-Instruct
+export LLMGT_HF_MAX_NEW_TOKENS=64
+export LLMGT_N_RUNS=100
+python scripts/run_thesis.py
+```
+
+---
+
+## Prompt Caching (Cost Optimization)
+
+### Overview
+
+When using Claude models via OpenRouter, **prompt caching** can reduce costs by up to 90%:
+- First request: 1.25x cost (5-min TTL) or 2x cost (1-hour TTL) for cached tokens
+- Subsequent requests: **0.1x cost** for cached tokens (10% of original price)
+
+**Example savings**: 100 episodes × 3,000-token system prompt
+- Without caching: 100 × 3,000 tokens = $0.12
+- With caching: 1 write (3,750 tokens) + 99 reads (3,000 tokens each) = $0.034 **72% savings**
+
+### Configuration
+
+For maximum stability and cost savings with Claude 3.5 Haiku:
+
+**`.env` file:**
+```bash
+OPENROUTER_API_KEY=sk-or-...
+
+# Prompt caching settings
+LLMGT_OPENROUTER_PROMPT_CACHING=1
+LLMGT_OPENROUTER_PROMPT_CACHE_TTL=1h
+LLMGT_OPENROUTER_ANTHROPIC_ONLY=1
+LLMGT_OPENROUTER_PROMPT_CACHING_MODE=explicit
+```
+
+### How It Works
+
+1. **Automatic system preamble**: A ~2,200 token cached preamble is prepended to system prompts for all Claude models (optional, improves cache hits)
+2. **Cache breakpoint**: The system message is wrapped with `cache_control: { type: "ephemeral", ttl: "1h" }`
+3. **Provider routing**: With `anthropic_only=1`, OpenRouter routes *only* to Anthropic (not Bedrock/Vertex) to avoid TTL incompatibility
+4. **Sticky routing**: Within the same conversation/K-value, OpenRouter keeps you routed to the same provider to maximize cache hits
+
+### Bedrock Compatibility Note
+
+Amazon Bedrock (an alternate Claude provider on OpenRouter) does not support TTL fields in per-block cache control. If you don't set `anthropic_only=1`:
+- Cache still works, but with default 5-minute TTL (free cache_control)
+- You may see brief 400 errors on first write; client auto-retries without TTL
+
+**Recommendation**: Use `anthropic_only=1` for 1-hour TTL + maximum stability.
 
 ---
 
 ## Output Artifacts
 
-### Run Directory Layout
+### Run Directory Structure
 
 ```
-data/runs/20260223_082328Z_9f29a20_workflow_sweep_all/
-├── run_meta.json              # Configuration snapshot
-├── prisoners_dilemma/
-│   ├── logs/
-│   │   └── episodes.jsonl     # Raw episode records
-│   ├── summary_by_k.csv       # Aggregated metrics
-│   └── figures/
-│       ├── agreement_rate.png
-│       ├── mean_rounds_to_agreement.png
-│       ├── welfare_mean.png
-│       ├── theory_rate.png
-│       └── mean_rounds_to_theory_hit.png
-├── stag_hunt/
-│   └── ...
-├── battle_of_sexes/
-│   └── ...
-└── ultimatum/
-    └── ...
+data/runs/20260310_142010Z_abc1234_THESIS_FULL/
+├── run_meta.json                    # Configuration snapshot
+├── raw/
+│   └── claude-3.5-haiku/
+│       ├── no_workflow/
+│       │   └── prisoners_dilemma/
+│       │       ├── summary.csv      # Aggregated metrics by K
+│       │       └── logs/
+│       │           └── episodes_*.jsonl
+│       └── workflow/
+│           └── ...
+└── plots/
+    ├── global/
+    │   └── *.png                    # Overall comparison plots
+    ├── mode_comparison/
+    │   └── *.png                    # Workflow vs no_workflow
+    └── model_comparison/
+        └── *.png                    # Model-to-model comparisons
 ```
 
-### Episode Logs (JSONL)
+### Summary CSV Columns
 
-Each line is a serialized `EpisodeRecord`:
+Each `summary.csv` contains per-K aggregated metrics:
 
-```json
-{
-  "episode_id": "pd-K3-run42",
-  "game": "prisoners_dilemma",
-  "mode": "workflow",
-  "max_comm_rounds": 3,
-  "used_comm_rounds": 2,
-  "messages": [
-    {"role": "system", "content": "Episode started..."},
-    {"role": "agent_a", "content": "PROPOSE: (C,C)"},
-    {"role": "agent_b", "content": "ACCEPT: (C,C)"},
-    {"role": "agent_a", "content": "ACTION: C"},
-    {"role": "agent_b", "content": "ACTION: C"}
-  ],
-  "action_a": "C", "action_b": "C",
-  "payoff_a": 3.0, "payoff_b": 3.0,
-  "nash_hit": false, "pareto_hit": true,
-  "theory_hit": false,
-  "agreement_hit": true,
-  "rounds_to_agreement": 1
-}
+```
+k,agreement_rate,nash_rate,pareto_rate,theory_rate,welfare_mean,
+mean_rounds_to_agreement,payoff_diff_mean,accept_rate,counter_rate,...
+0,0.15,0.22,0.20,0.22,4.1,NaN,1.8,NaN,NaN,...
+1,0.35,0.40,0.38,0.40,5.2,1.2,1.5,0.28,0.05,...
+...
 ```
 
-### Plots
-
-Generated with `--plots` flag.  Plots show metric values vs. *K* with optional error bars (from `*_std` columns):
-
-- `agreement_rate.png` — fraction of episodes where agents agreed
-- `welfare_mean.png` — mean joint payoff
-- `theory_rate.png` — fraction matching theoretical solution concept
-- `mean_rounds_to_agreement.png` — how quickly agents agree
-- `mean_rounds_to_theory_hit.png` — rounds until theory-target agreement
+All numeric metrics include `*_std` columns for standard deviations.
 
 ---
 
@@ -320,104 +298,66 @@ Generated with `--plots` flag.  Plots show metric values vs. *K* with optional e
 
 ```
 src/llmgt/
-├── __init__.py                    # Package root
-├── cli.py                         # CLI entrypoint (llmgt sweep)
-│
-├── games/                         # Game definitions
-│   ├── base.py                    # Abstract Game base class
-│   ├── prisoners_dilemma.py       # Prisoner's Dilemma
-│   ├── stag_hunt.py               # Stag Hunt
-│   ├── battle_of_sexes.py         # Battle of the Sexes
-│   └── ultimatum.py               # Ultimatum Game
-│
+├── games/                         # Game definitions (PD, Stag Hunt, BoS, Ultimatum)
 ├── agents/                        # Agent implementations
-│   ├── parsing.py                 # ★ Shared parsing utilities (refactored)
-│   ├── simple.py                  # FixedActionAgent, EchoAgent
-│   ├── workflow.py                # Rule-based workflow agents
+│   ├── parsing.py                 # Shared parsing utilities
 │   ├── llm.py                     # Basic LLM agent
 │   ├── strategic.py               # Strategic LLM agent (payoff-aware)
-│   └── workflow_reasoner.py       # Workflow + game-theory reasoning agent
-│
+│   ├── workflow_reasoner.py       # Workflow + game-theory reasoning
+│   └── simple.py                  # Baseline agents
 ├── llm/                           # LLM backend clients
-│   ├── client.py                  # LLMClient protocol + ScriptedLLMClient
-│   ├── heuristic.py               # Deterministic heuristic baseline
-│   ├── openai_client.py           # OpenAI Responses API
+│   ├── openrouter_client.py       # OpenRouter API client (supports prompt caching)
+│   ├── hf_client.py               # HuggingFace Transformers
+│   ├── openai_client.py           # OpenAI API
 │   ├── ollama_client.py           # Ollama HTTP API
-│   └── hf_client.py               # HuggingFace Transformers
-│
+│   └── heuristic.py               # Deterministic baseline
 ├── sim/                           # Simulation engine
 │   ├── runner.py                  # Episode runner & experiment driver
 │   ├── agreement.py               # Agreement detection
 │   ├── theory.py                  # Nash/Pareto hit computation
-│   ├── rounds.py                  # ★ Rounds-to-agreement/theory (bug fixed)
+│   ├── rounds.py                  # Rounds-to-agreement/theory calculation
 │   ├── workflow.py                # PROPOSE/COUNTER/ACCEPT extraction
-│   ├── run_dir.py                 # Timestamped output directories
-│   └── utils.py                   # Episode ID generation
-│
+│   └── run_dir.py                 # Timestamped output directories
 ├── experiments/                   # Experiment orchestration
 │   ├── sweep.py                   # Communication sweep + aggregation
-│   ├── plotting.py                # ★ Metric plots with error bars
-│   ├── agent_factories.py         # ★ LLM client/agent factories (refactored)
-│   └── game_configs.py            # Per-game workflow baselines
-│
+│   ├── agent_factories.py         # LLM client/agent factories
+│   └── game_configs.py            # Per-game baseline configurations
 ├── logging/                       # Data persistence
 │   ├── records.py                 # Pydantic models (EpisodeRecord, etc.)
 │   ├── jsonl_logger.py            # Append-mode JSONL writer
-│   └── run_meta.py                # Configuration snapshot writer
-│
-└── metrics/                       # Per-episode & aggregate metrics
-    └── __init__.py                # CommStats, regret, welfare gap
+│   └── run_meta.py                # Configuration snapshot
+└── metrics/                       # Metric computation
+    └── __init__.py                # CommStats, regret, welfare metrics
 
-scripts/                           # Convenience experiment runners
-tests/                             # pytest test suite (51 tests)
+scripts/
+├── run_thesis.py                  # Main thesis pipeline (all models × games × modes)
+└── check_system_prompt_tokens.py  # Verify cached preamble size
+
+tests/                             # pytest suite (64 tests)
 ```
-
-★ = refactored or bug-fixed in this revision.
 
 ---
 
 ## Testing
 
 ```bash
-# Run all 51 tests
+# Run all 64 tests
 pytest -v
 
-# Run a specific test file
-pytest tests/test_parsing.py -v
+# Run specific test file
+pytest tests/test_openrouter_prompt_caching.py -v
 
-# Run with coverage (if pytest-cov installed)
+# Run with coverage
 pytest --cov=llmgt --cov-report=term-missing
 ```
 
 Test categories:
-- **Game logic**: payoffs, Nash/Pareto sets, role-specific actions
-- **Agreement detection**: workflow ACCEPT matching, no-workflow fallback
-- **Theory hits**: Nash/Pareto hit computation, rounds-to-theory-hit
-- **Parsing**: protocol line extraction, action parsing, pair sanitisation
-- **Agents**: LLM agent act/send_message, workflow agents, stochastic responder
-- **Sweep**: communication sweep, summarize_by_k, CSV output
-- **Plotting**: legacy/new column names, PNG generation
-- **Logging**: Pydantic serialisation, JSONL output
-
----
-
-## Known Issues & Design Decisions
-
-### Fixed in This Revision
-
-1. **`compute_rounds_to_theory_hit` bug** — Previously always returned round 1 for any theory hit because `upto is not None` is always True for a non-empty list slice. Now properly scans conversation prefixes for agreement markers.
-
-2. **Code duplication** — `_format_history`, `_extract_accepted_pair`, `_parse_action`, regex patterns were duplicated across `llm.py`, `strategic.py`, and `workflow_reasoner.py`. Extracted to `agents/parsing.py`.
-
-3. **Missing error bars** — `plot_metric_by_k` now automatically uses `*_std` columns for error bars when available.
-
-4. **Factory duplication** — `_make_clients` in `agent_factories.py` had identical client-construction blocks repeated. Refactored to a single `_make_client()` function.
-
-### Design Notes
-
-- **Heuristic backend**: always proposes cooperative/Pareto outcomes — this is intentional as a deterministic "best-case" baseline.
-- **Theory target set**: if a Pareto-optimal Nash equilibrium exists, that is the target; otherwise the Nash set is used. This follows the paper's methodology.
-- **Stochastic workflow responder**: acceptance probability `p(r) = min(1, base_p + (r-1) × step_p)` — models escalating willingness to agree.
+- **Game logic**: Payoff matrices, Nash equilibria, Pareto optima
+- **Agents**: Message handling, action parsing, workflow protocol
+- **Agreement detection**: PROPOSE/ACCEPT matching, fallback logic
+- **Parsing**: Protocol lines, action tokens, pair sanitization
+- **Sweep**: Communication sweeps, per-K aggregation
+- **Prompt caching**: Cache control injection, TTL handling, provider routing
 
 ---
 
@@ -425,11 +365,11 @@ Test categories:
 
 For stable thesis results:
 
-1. **Fix all parameters** when comparing conditions: `K`, `n_runs`, `mode`, backend, `temperature`, `max_output_tokens`.
-2. **Record model identifiers** in `run_meta.json` (done automatically).
-3. **Store raw logs** (`episodes.jsonl`) — they contain full dialogues + final actions.
-4. **Run multiple independent seeds** and report confidence intervals (LLM sampling has inherent variance).
-5. **Use `summary_by_k.csv`** `*_std` columns for error bars in plots.
+1. **Fix all parameters**: `K` values, `n_runs`, backend, `temperature`, `max_output_tokens`
+2. **Record run metadata**: `run_meta.json` stores all configuration automatically
+3. **Preserve raw logs**: `episodes.jsonl` contains full dialogues + final outcomes
+4. **Use confidence intervals**: Report `*_std` columns from `summary.csv` for error bars
+5. **Multiple seeds**: LLM sampling has inherent variance; run multiple independent sweeps
 
 ---
 
@@ -437,13 +377,16 @@ For stable thesis results:
 
 | Problem | Solution |
 |---------|----------|
-| No plots / "Plotting skipped" | `pip install matplotlib` |
-| Ollama connection timeout | Ensure server is running: `ollama serve`; check `--ollama-host` |
-| HuggingFace out-of-memory | Use smaller model, reduce `--hf-max-new-tokens`, or use CPU |
-| OpenAI auth error | Set `OPENAI_API_KEY` environment variable |
-| Flat/constant plots | Check that agents actually communicate (use `--backend heuristic` to verify); increase `--n-runs` for statistical significance |
-| `theory_rate` always 0 or 1 | Expected for deterministic backends; LLM backends show variance |
+| "OpenRouter API key not provided" | Set `OPENROUTER_API_KEY` environment variable |
+| Prompt caching 400 errors | Ensure `anthropic_only=1` if using 1h TTL; client auto-retries without TTL |
+| HuggingFace out-of-memory | Use smaller model or reduce `max_new_tokens`; enable GPU if available |
+| Ollama connection timeout | Ensure Ollama server is running: `ollama serve` |
+| No plots generated | Install matplotlib: `pip install matplotlib` |
+| `theory_rate` always 0 or 1 | Expected for deterministic backends; LLMs show variance |
 
 ---
 
+**For questions or issues**: See `tests/` for usage examples, or consult the inline docstrings in `src/llmgt/`.
+
 *Built for a diploma/thesis on LLM-based game-theoretic negotiation.*
+

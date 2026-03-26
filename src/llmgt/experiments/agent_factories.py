@@ -6,6 +6,7 @@ Centralises LLM client construction and agent wiring for both
 
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass
 from typing import Any, Literal, Optional
 
@@ -21,6 +22,63 @@ Mode = Literal["no_workflow", "workflow"]
 
 # Type alias — any agent that exposes ``send_message`` + ``act``
 AgentPair = tuple[Any, Any]
+
+
+def _load_openrouter_config_from_env() -> dict[str, Any]:
+    """Load OpenRouter prompt caching config from environment variables.
+
+    This centralizes all the LLMGT_OPENROUTER_* variables into a dict
+    that can be passed to LLMBackendConfig.
+
+    For backward compatibility, also checks LLMGT_CLAUDE_* aliases.
+    """
+    config = {}
+
+    # Prompt caching enabled?
+    cache_enabled = os.getenv("LLMGT_OPENROUTER_PROMPT_CACHING")
+    if cache_enabled is None:
+        cache_enabled = os.getenv("LLMGT_CLAUDE_PROMPT_CACHING")
+    config["openrouter_prompt_caching"] = cache_enabled == "1"
+
+    # Cache TTL (5m default, 1h optional)
+    cache_ttl = os.getenv("LLMGT_OPENROUTER_PROMPT_CACHE_TTL")
+    if cache_ttl is None:
+        cache_ttl = os.getenv("LLMGT_CLAUDE_PROMPT_CACHE_TTL")
+    if cache_ttl:
+        config["openrouter_prompt_cache_ttl"] = cache_ttl
+
+    # Caching mode (explicit or auto)
+    caching_mode = os.getenv("LLMGT_OPENROUTER_PROMPT_CACHING_MODE")
+    if caching_mode is None:
+        caching_mode = os.getenv("LLMGT_CLAUDE_PROMPT_CACHING_MODE")
+    if caching_mode:
+        config["openrouter_prompt_caching_mode"] = caching_mode  # type: ignore
+
+    # Include TTL in explicit blocks?
+    explicit_ttl = os.getenv("LLMGT_OPENROUTER_EXPLICIT_CACHE_INCLUDE_TTL")
+    if explicit_ttl is None:
+        explicit_ttl = os.getenv("LLMGT_CLAUDE_EXPLICIT_INCLUDE_TTL")
+    if explicit_ttl is not None:
+        config["openrouter_explicit_cache_include_ttl"] = explicit_ttl == "1"
+
+    # Force Anthropic-only routing?
+    anthropic_only = os.getenv("LLMGT_OPENROUTER_ANTHROPIC_ONLY")
+    if anthropic_only is None:
+        anthropic_only = os.getenv("LLMGT_CLAUDE_ANTHROPIC_ONLY")
+    if anthropic_only is not None:
+        config["openrouter_anthropic_only"] = anthropic_only == "1"
+
+    # Cache system message?
+    cache_system = os.getenv("LLMGT_OPENROUTER_CACHE_SYSTEM")
+    if cache_system:
+        config["openrouter_cache_system_message"] = cache_system != "0"
+
+    # Cache first user message?
+    cache_first_user = os.getenv("LLMGT_OPENROUTER_CACHE_FIRST_USER")
+    if cache_first_user:
+        config["openrouter_cache_first_user_message"] = cache_first_user == "1"
+
+    return config
 
 
 @dataclass(frozen=True)

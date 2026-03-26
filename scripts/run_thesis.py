@@ -19,27 +19,6 @@ else:
     load_dotenv(_repo_root / ".env")
 
 
-def _map_env_if_unset(dst: str, src: str) -> None:
-    """If *dst* is not set but *src* is, copy src->dst.
-
-    This keeps a single source of truth (OpenRouter env vars) while preserving
-    backwards-compatibility with older script-specific `LLMGT_CLAUDE_*` knobs.
-    """
-
-    if os.getenv(dst) is None and os.getenv(src) is not None:
-        os.environ[dst] = os.getenv(src) or ""
-
-
-# Backwards-compatible env mapping:
-# Prefer LLMGT_OPENROUTER_* if present; otherwise fall back to LLMGT_CLAUDE_*.
-_map_env_if_unset("LLMGT_OPENROUTER_PROMPT_CACHING", "LLMGT_CLAUDE_PROMPT_CACHING")
-_map_env_if_unset("LLMGT_OPENROUTER_PROMPT_CACHING_MODE", "LLMGT_CLAUDE_PROMPT_CACHING_MODE")
-_map_env_if_unset("LLMGT_OPENROUTER_PROMPT_CACHE_TTL", "LLMGT_CLAUDE_PROMPT_CACHE_TTL")
-_map_env_if_unset("LLMGT_OPENROUTER_CACHE_SYSTEM", "LLMGT_CLAUDE_CACHE_SYSTEM")
-_map_env_if_unset("LLMGT_OPENROUTER_CACHE_FIRST_USER", "LLMGT_CLAUDE_CACHE_FIRST_USER")
-_map_env_if_unset("LLMGT_OPENROUTER_EXPLICIT_CACHE_INCLUDE_TTL", "LLMGT_CLAUDE_EXPLICIT_INCLUDE_TTL")
-_map_env_if_unset("LLMGT_OPENROUTER_ANTHROPIC_ONLY", "LLMGT_CLAUDE_ANTHROPIC_ONLY")
-
 
 import pandas as pd
 
@@ -53,10 +32,6 @@ from llmgt.experiments.agent_factories import LLMBackendConfig, make_agents_for_
 from llmgt.logging.jsonl_logger import JsonlLogger
 from llmgt.logging.run_meta import write_run_meta
 from llmgt.sim.run_dir import make_run_dir
-
-from llmgt.games.prisoners_dilemma import PrisonersDilemma
-from llmgt.games.stag_hunt import StagHunt
-from llmgt.games.battle_of_sexes import BattleOfSexes
 from llmgt.games.ultimatum import UltimatumGame
 
 
@@ -85,21 +60,21 @@ MODES = ["no_workflow", "workflow"]
 
 # Env overrides:
 #   LLMGT_N_RUNS=100
-#   LLMGT_K_VALUES=0,1,2,3,4,5,6, 7,8,9
+#   LLMGT_K_VALUES=0,1,2,3,4,5,6,7,8,9
 #   LLMGT_TEMPERATURE=0.7
 #   LLMGT_MAX_NEW_TOKENS=64
 #   LLMGT_WORKFLOW_LEVEL=2
 #   LLMGT_AGENT_STYLE=strategic
-# LLM backend selection for this script:
+# LLM backend selection:
 #   LLMGT_BACKEND=openrouter|hf   (default: openrouter)
 # HuggingFace backend (Transformers):
 #   LLMGT_HF_MODEL=meta-llama/Llama-3.3-70B-Instruct
 #   LLMGT_HF_MAX_NEW_TOKENS=64
 # Prompt caching (Claude via OpenRouter):
-#   LLMGT_CLAUDE_PROMPT_CACHING=1        (default: 1 for anthropic/* models)
-#   LLMGT_CLAUDE_PROMPT_CACHE_TTL=1h     (default: 1h)
-#   LLMGT_CLAUDE_CACHE_SYSTEM=1          (default: 1)
-#   LLMGT_CLAUDE_CACHE_FIRST_USER=0      (default: 0)
+#   LLMGT_OPENROUTER_PROMPT_CACHING=1        (default: 1 for anthropic/* models)
+#   LLMGT_OPENROUTER_PROMPT_CACHE_TTL=1h     (default: 1h)
+#   LLMGT_OPENROUTER_CACHE_SYSTEM=1          (default: 1)
+#   LLMGT_OPENROUTER_CACHE_FIRST_USER=0      (default: 0)
 N_RUNS = int(os.getenv("LLMGT_N_RUNS", "100"))
 K_VALUES = [int(x.strip()) for x in os.getenv("LLMGT_K_VALUES", "0,1,2,3,4,5,6,7,8,9").split(",") if x.strip()]
 TEMPERATURE = float(os.getenv("LLMGT_TEMPERATURE", "0.7"))
@@ -384,29 +359,10 @@ def run_single_experiment(
 
     backend = os.getenv("LLMGT_BACKEND", "openrouter").strip().lower()
 
-    # Enable prompt caching only for Claude (Anthropic models on OpenRouter).
-    # This uses Anthropic-compatible per-block `cache_control` under the hood.
-    is_claude = model_id.strip().lower().startswith("anthropic/")
-    claude_prompt_caching = os.getenv("LLMGT_CLAUDE_PROMPT_CACHING")
-    enable_prompt_caching = (
-        (claude_prompt_caching is None and is_claude)
-        or (claude_prompt_caching == "1")
-    )
-    prompt_cache_ttl = os.getenv("LLMGT_CLAUDE_PROMPT_CACHE_TTL", "1h")
-    cache_system = os.getenv("LLMGT_CLAUDE_CACHE_SYSTEM", "1") == "1"
-    cache_first_user = os.getenv("LLMGT_CLAUDE_CACHE_FIRST_USER", "0") == "1"
+    # Use centralized OpenRouter config loader
+    from llmgt.experiments.agent_factories import _load_openrouter_config_from_env
 
-    # Caching stability/routing knobs
-    caching_mode = os.getenv("LLMGT_CLAUDE_PROMPT_CACHING_MODE", "explicit")
-    explicit_include_ttl = os.getenv("LLMGT_CLAUDE_EXPLICIT_INCLUDE_TTL", "1") == "1"
-
-    # If TTL=1h is requested for Claude, enforce Anthropic-only routing by default.
-    # You can override with LLMGT_CLAUDE_ANTHROPIC_ONLY=0 if you explicitly want fallback.
-    anthropic_only_env = os.getenv("LLMGT_CLAUDE_ANTHROPIC_ONLY")
-    anthropic_only = (
-        (anthropic_only_env is None and str(prompt_cache_ttl).strip() == "1h")
-        or anthropic_only_env == "1"
-    )
+    openrouter_cfg = _load_openrouter_config_from_env()
 
     if backend == "hf":
         # For HF runs, `model_id` is expected to be a Hugging Face repo id
@@ -427,13 +383,7 @@ def run_single_experiment(
             temperature=TEMPERATURE,
             agent_style=AGENT_STYLE,  # type: ignore[arg-type]
             workflow_level=WORKFLOW_LEVEL,
-            openrouter_prompt_caching=enable_prompt_caching,
-            openrouter_prompt_cache_ttl=prompt_cache_ttl if enable_prompt_caching else None,
-            openrouter_cache_system_message=cache_system,
-            openrouter_cache_first_user_message=cache_first_user,
-            openrouter_prompt_caching_mode=caching_mode,  # type: ignore[arg-type]
-            openrouter_explicit_cache_include_ttl=explicit_include_ttl,
-            openrouter_anthropic_only=(anthropic_only if enable_prompt_caching and is_claude else False),
+            **openrouter_cfg,
         )
 
     agent_a, agent_b = make_agents_for_mode(game, backend_cfg, mode)  # type: ignore[arg-type]
