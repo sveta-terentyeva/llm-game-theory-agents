@@ -48,13 +48,13 @@ publication-ready aggregate metrics with standard deviations.
 ## Architecture Overview
 
 ```
-┌─────────────┐     ┌──────────────┐     ┌─────────────────┐
+┌──────────────┐     ┌──────────────┐     ┌──────────────────┐
 │  Game        │     │  Agent A     │     │  Agent B         │
 │  (payoffs,   │◄────│  (send_msg,  │────►│  (send_msg,      │
 │   Nash,      │     │   act)       │     │   act)           │
-│   Pareto)    │     └──────┬───────┘     └──────┬───────────┘
-└──────┬───────┘            │                    │
-       │           ┌───────▼────────────────────▼──────────┐
+│   Pareto)    │     └─────┬────────┘     └─────┬────────────┘
+└──────┬───────┘           │                    │
+       │           ┌───────▼────────────────────▼───────────┐
        │           │         Simulation Runner              │
        │           │  • communication loop (K rounds)       │
        └──────────►│  • action collection                   │
@@ -63,8 +63,8 @@ publication-ready aggregate metrics with standard deviations.
                    └───────────────┬────────────────────────┘
                                    │
                    ┌───────────────▼────────────────────────┐
-                   │         Logging & Metrics               │
-                   │  • JSONL episode records                │
+                   │         Logging & Metrics              │
+                   │  • JSONL episode records               │
                    │  • per-K aggregation (CSV)             │
                    │  • plots (PNG)                         │
                    └────────────────────────────────────────┘
@@ -306,7 +306,7 @@ src/llmgt/
 │   ├── workflow_reasoner.py       # Workflow + game-theory reasoning
 │   └── simple.py                  # Baseline agents
 ├── llm/                           # LLM backend clients
-│   ├── openrouter_client.py       # OpenRouter API client (supports prompt caching)
+│   ├── openrouter_client.py       # OpenRouter API client
 │   ├── hf_client.py               # HuggingFace Transformers
 │   ├── openai_client.py           # OpenAI API
 │   ├── ollama_client.py           # Ollama HTTP API
