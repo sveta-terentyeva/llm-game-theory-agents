@@ -330,8 +330,8 @@ src/llmgt/
     └── __init__.py                # CommStats, regret, welfare metrics
 
 scripts/
-├── run_thesis.py                  # Main thesis pipeline (all models × games × modes)
-└── check_system_prompt_tokens.py  # Verify cached preamble size
+└─ run_thesis.py                  # Main thesis pipeline (all models × games × modes)
+
 
 tests/                             # pytest suite (64 tests)
 ```
